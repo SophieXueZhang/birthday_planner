@@ -739,9 +739,14 @@ def index():
 
 
 if __name__ == "__main__":
-    print("\n🎉 Birthday Party Planner — US Edition")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8080)
+    args = parser.parse_args()
+
+    print(f"\n🎉 Birthday Party Planner — US Edition")
     print("=" * 50)
-    print("🌐 Open in your browser: http://localhost:5000")
+    print(f"🌐 Open in your browser: http://localhost:{args.port}")
     print("=" * 50)
     print("\nPress Ctrl+C to stop the server\n")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=args.port, debug=False)
