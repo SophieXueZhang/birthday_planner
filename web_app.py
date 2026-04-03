@@ -1,753 +1,826 @@
 #!/usr/bin/env python3
 """
-Birthday Party Planner - Web Version (US Market)
-Flask-based web application for localhost preview
+Birthday Party Planner - US Market
+Zero-registration flow: fill form → get shareable link → send to guests
+Revenue: Amazon affiliate commissions (tag=partyplan-20)
 """
 import os
-import sys
 import json
-from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify
-
-_base_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_base_dir, 'src'))
-from us_config import *
-from us_monetization import SubscriptionTier
+import base64
+from datetime import datetime
+from flask import Flask, render_template_string, request, redirect, url_for
 
 app = Flask(__name__)
 
-# ─── Demo Data ───────────────────────────────────────────
+# ─── Theme Data ──────────────────────────────────────────
 
-DEMO_PARTY = {
-    "child_name": "Liam",
-    "child_age": 6,
-    "party_date": (datetime.now() + timedelta(days=44)).strftime("%Y-%m-%d"),
-    "party_time": "2:00 PM",
-    "venue": "Backyard",
-    "venue_address": "123 Oak Street, Los Angeles, CA 90001",
-    "budget": 400.00,
-    "theme": "Spider-Man",
-    "guest_count_expected": 15,
-    "guests": [
-        {"name": "Emma Johnson", "email": "emma.parent@email.com", "rsvp": "confirmed", "dietary": ""},
-        {"name": "Noah Williams", "email": "noah.parent@email.com", "rsvp": "confirmed", "dietary": "Peanut allergy"},
-        {"name": "Olivia Brown", "email": "olivia.parent@email.com", "rsvp": "confirmed", "dietary": ""},
-        {"name": "James Davis", "email": "james.parent@email.com", "rsvp": "confirmed", "dietary": "Gluten-free"},
-        {"name": "Sophia Miller", "email": "sophia.parent@email.com", "rsvp": "confirmed", "dietary": ""},
-        {"name": "Benjamin Wilson", "email": "ben.parent@email.com", "rsvp": "confirmed", "dietary": ""},
-        {"name": "Ava Moore", "email": "ava.parent@email.com", "rsvp": "confirmed", "dietary": ""},
-        {"name": "Lucas Taylor", "email": "lucas.parent@email.com", "rsvp": "pending", "dietary": ""},
-        {"name": "Mia Anderson", "email": "mia.parent@email.com", "rsvp": "pending", "dietary": ""},
-        {"name": "Henry Thomas", "email": "henry.parent@email.com", "rsvp": "pending", "dietary": ""},
-        {"name": "Charlotte Jackson", "email": "", "rsvp": "pending", "dietary": ""},
-        {"name": "Alexander White", "email": "alex.parent@email.com", "rsvp": "declined", "dietary": ""},
-    ],
-    "shopping_list": [
-        {"name": "Spider-Man cake (Costco)", "category": "Food", "qty": 1, "price": 24.99, "store": "Costco", "bought": True, "actual": 22.99},
-        {"name": "Pizza (3 large)", "category": "Food", "qty": 3, "price": 8.99, "store": "Little Caesars", "bought": True, "actual": 6.49},
-        {"name": "Juice boxes (24-pack)", "category": "Food", "qty": 2, "price": 6.49, "store": "Costco", "bought": True, "actual": 5.99},
-        {"name": "Spider-Man plates & napkins set", "category": "Tableware", "qty": 1, "price": 19.99, "store": "Amazon", "bought": True, "actual": 19.99},
-        {"name": "Balloon garland kit (red & blue)", "category": "Decorations", "qty": 1, "price": 15.99, "store": "Amazon", "bought": False, "actual": 0},
-        {"name": "Spider-Man banner", "category": "Decorations", "qty": 1, "price": 8.99, "store": "Amazon", "bought": False, "actual": 0},
-        {"name": "Spider-Man piñata", "category": "Activities", "qty": 1, "price": 16.99, "store": "Amazon", "bought": False, "actual": 0},
-        {"name": "Piñata candy (2 lbs)", "category": "Activities", "qty": 1, "price": 12.99, "store": "Target", "bought": False, "actual": 0},
-        {"name": "Goody bags pre-filled (15-pack)", "category": "Goody Bags", "qty": 1, "price": 24.99, "store": "Amazon", "bought": False, "actual": 0},
-        {"name": "Bubbles (12-pack party favors)", "category": "Goody Bags", "qty": 1, "price": 9.99, "store": "Dollar Tree", "bought": False, "actual": 0},
-        {"name": "Paper cups (50ct)", "category": "Tableware", "qty": 1, "price": 4.99, "store": "Target", "bought": False, "actual": 0},
-        {"name": "Plastic utensils", "category": "Tableware", "qty": 1, "price": 3.99, "store": "Target", "bought": False, "actual": 0},
-        {"name": "Thank you cards (15-pack)", "category": "Misc", "qty": 1, "price": 7.99, "store": "Target", "bought": False, "actual": 0},
-    ],
-    "checklist": [
-        {"phase": "4 weeks before", "tasks": [
-            {"task": "Choose date and book venue", "done": True, "important": True},
-            {"task": "Create guest list", "done": True, "important": True},
-            {"task": "Set budget ($400)", "done": True, "important": True},
-            {"task": "Pick theme (Spider-Man)", "done": True, "important": False},
-        ]},
-        {"phase": "3 weeks before", "tasks": [
-            {"task": "Send invitations via Evite", "done": True, "important": True},
-            {"task": "Order cake from Costco", "done": False, "important": True},
-        ]},
-        {"phase": "2 weeks before", "tasks": [
-            {"task": "Follow up on RSVPs", "done": False, "important": True},
-            {"task": "Buy decorations on Amazon", "done": False, "important": False},
-            {"task": "Plan activities & games", "done": False, "important": False},
-        ]},
-        {"phase": "1 week before", "tasks": [
-            {"task": "Confirm final headcount", "done": False, "important": True},
-            {"task": "Buy goody bag supplies", "done": False, "important": False},
-            {"task": "Buy piñata + candy", "done": False, "important": False},
-        ]},
-        {"phase": "Day before", "tasks": [
-            {"task": "Order pizza", "done": False, "important": True},
-            {"task": "Pick up cake from Costco", "done": False, "important": True},
-            {"task": "Set up decorations", "done": False, "important": False},
-            {"task": "Assemble goody bags", "done": False, "important": False},
-            {"task": "Charge camera/phone", "done": False, "important": False},
-        ]},
-        {"phase": "Party day! 🎉", "tasks": [
-            {"task": "Set up tables & food area", "done": False, "important": True},
-            {"task": "Hang piñata", "done": False, "important": False},
-            {"task": "HAVE FUN!", "done": False, "important": True},
-        ]},
-    ],
-    "saving_tips": [
-        {"category": "🎂 Cake", "tip": "Costco sheet cake: $24.99 vs custom bakery: $80+", "savings": 55},
-        {"category": "🎈 Decorations", "tip": "Dollar Tree basics + Amazon garland kit", "savings": 30},
-        {"category": "🍕 Pizza", "tip": "Little Caesars $6/ea vs delivery $15/ea", "savings": 27},
-        {"category": "📧 Invitations", "tip": "Evite (free!) vs printed cards ($25)", "savings": 25},
-        {"category": "🎁 Goody bags", "tip": "Oriental Trading bulk: $1.50/bag vs store: $4/bag", "savings": 37},
-    ]
+THEMES = {
+    "Spider-Man": {
+        "emoji": "🕷️",
+        "colors": ("#E31B23", "#003399"),
+        "gradient": "linear-gradient(135deg, #E31B23 0%, #003399 100%)",
+        "items": [
+            "Spider-Man birthday cake",
+            "Spider-Man plates and napkins set",
+            "Spider-Man balloon garland kit red blue",
+            "Spider-Man banner decoration",
+            "Spider-Man pinata",
+            "Spider-Man goody bags pre-filled",
+            "Spider-Man tablecloth",
+            "pinata candy 2 lbs assorted",
+            "bubbles party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Frozen": {
+        "emoji": "❄️",
+        "colors": ("#A8D8EA", "#5B86E5"),
+        "gradient": "linear-gradient(135deg, #A8D8EA 0%, #5B86E5 100%)",
+        "items": [
+            "Frozen birthday cake topper",
+            "Frozen plates and napkins set",
+            "Frozen balloon garland kit blue silver",
+            "Frozen banner decoration",
+            "Frozen pinata",
+            "Frozen goody bags pre-filled",
+            "snowflake tablecloth decoration",
+            "pinata candy 2 lbs assorted",
+            "bubbles party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Unicorn": {
+        "emoji": "🦄",
+        "colors": ("#F9A8D4", "#C084FC"),
+        "gradient": "linear-gradient(135deg, #F9A8D4 0%, #C084FC 100%)",
+        "items": [
+            "unicorn birthday cake topper",
+            "unicorn plates and napkins set",
+            "rainbow balloon garland kit",
+            "unicorn banner decoration",
+            "unicorn pinata",
+            "unicorn goody bags pre-filled",
+            "rainbow tablecloth party",
+            "pinata candy 2 lbs assorted",
+            "bubbles party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Dinosaur": {
+        "emoji": "🦕",
+        "colors": ("#4ADE80", "#166534"),
+        "gradient": "linear-gradient(135deg, #4ADE80 0%, #166534 100%)",
+        "items": [
+            "dinosaur birthday cake topper",
+            "dinosaur plates and napkins set",
+            "green balloon garland kit",
+            "dinosaur banner decoration",
+            "dinosaur pinata",
+            "dinosaur goody bags pre-filled",
+            "jungle green tablecloth",
+            "pinata candy 2 lbs assorted",
+            "dinosaur figurines party favors",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Princess": {
+        "emoji": "👸",
+        "colors": ("#FCD34D", "#F472B6"),
+        "gradient": "linear-gradient(135deg, #FCD34D 0%, #F472B6 100%)",
+        "items": [
+            "princess birthday cake topper",
+            "princess plates and napkins set",
+            "pink gold balloon garland kit",
+            "princess banner decoration",
+            "princess pinata",
+            "princess goody bags pre-filled",
+            "pink tablecloth party",
+            "pinata candy 2 lbs assorted",
+            "tiara party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Paw Patrol": {
+        "emoji": "🐾",
+        "colors": ("#EF4444", "#3B82F6"),
+        "gradient": "linear-gradient(135deg, #EF4444 0%, #3B82F6 100%)",
+        "items": [
+            "Paw Patrol birthday cake topper",
+            "Paw Patrol plates and napkins set",
+            "Paw Patrol balloon garland kit",
+            "Paw Patrol banner decoration",
+            "Paw Patrol pinata",
+            "Paw Patrol goody bags pre-filled",
+            "Paw Patrol tablecloth",
+            "pinata candy 2 lbs assorted",
+            "bubbles party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Minecraft": {
+        "emoji": "⛏️",
+        "colors": ("#5D8233", "#3E2723"),
+        "gradient": "linear-gradient(135deg, #5D8233 0%, #3E2723 100%)",
+        "items": [
+            "Minecraft birthday cake topper",
+            "Minecraft plates and napkins set",
+            "green black balloon garland kit",
+            "Minecraft banner decoration",
+            "Minecraft pinata",
+            "Minecraft goody bags pre-filled",
+            "green tablecloth party",
+            "pinata candy 2 lbs assorted",
+            "Minecraft party favors",
+            "thank you cards kids 24 pack",
+        ],
+    },
+    "Rainbow": {
+        "emoji": "🌈",
+        "colors": ("#F97316", "#8B5CF6"),
+        "gradient": "linear-gradient(135deg, #F97316 0%, #FBBF24 33%, #4ADE80 66%, #8B5CF6 100%)",
+        "items": [
+            "rainbow birthday cake topper",
+            "rainbow plates and napkins set",
+            "rainbow balloon garland kit",
+            "rainbow banner decoration",
+            "colorful pinata",
+            "rainbow goody bags pre-filled",
+            "rainbow tablecloth party",
+            "pinata candy 2 lbs assorted",
+            "bubbles party favors 12 pack",
+            "thank you cards kids 24 pack",
+        ],
+    },
 }
 
+AFFILIATE_TAG = "partyplan-20"
 
-# ─── Template ────────────────────────────────────────────
+def amazon_url(query):
+    import urllib.parse
+    q = urllib.parse.quote_plus(query)
+    return f"https://www.amazon.com/s?k={q}&tag={AFFILIATE_TAG}"
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
+def encode_party(data):
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+
+def decode_party(b64):
+    return json.loads(base64.urlsafe_b64decode(b64.encode()).decode())
+
+
+# ─── Landing Page ─────────────────────────────────────────
+
+LANDING_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎉 Birthday Party Planner</title>
-    <style>
-        :root {
-            --primary: #6C5CE7;
-            --primary-light: #A29BFE;
-            --accent: #FD79A8;
-            --success: #00B894;
-            --warning: #FDCB6E;
-            --danger: #E17055;
-            --dark: #2D3436;
-            --gray: #636E72;
-            --light: #F8F9FA;
-            --white: #FFFFFF;
-            --shadow: 0 2px 15px rgba(0,0,0,0.08);
-            --radius: 16px;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Birthday Party Planner — Create in 60 Seconds</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.wrap { max-width: 560px; width: 100%; }
+.logo { text-align:center; color:white; margin-bottom:32px; }
+.logo h1 { font-size:36px; font-weight:900; }
+.logo p { font-size:18px; opacity:0.9; margin-top:8px; }
+.steps { display:flex; justify-content:center; gap:32px; margin-bottom:24px; }
+.step { text-align:center; color:white; opacity:0.85; }
+.step .num { width:32px; height:32px; background:rgba(255,255,255,0.3);
+  border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-weight:700; margin:0 auto 4px; font-size:14px; }
+.step .lbl { font-size:12px; }
+.card {
+  background:white;
+  border-radius:20px;
+  padding:36px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.card h2 { font-size:22px; margin-bottom:24px; color:#1a1a2e; }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.field { margin-bottom:16px; }
+.field label { display:block; font-size:13px; font-weight:600; color:#555; margin-bottom:6px; }
+.field input, .field select {
+  width:100%; padding:12px 14px;
+  border:2px solid #E5E7EB; border-radius:10px;
+  font-size:15px; color:#1a1a2e;
+  transition: border-color 0.2s;
+  background: white;
+}
+.field input:focus, .field select:focus {
+  outline:none; border-color:#667EEA;
+}
+.optional { font-size:11px; color:#9CA3AF; font-weight:400; }
+.submit-btn {
+  width:100%; padding:16px;
+  background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+  color:white; border:none; border-radius:12px;
+  font-size:18px; font-weight:700; cursor:pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-top:8px;
+}
+.submit-btn:hover { transform:translateY(-2px); box-shadow:0 8px 25px rgba(102,126,234,0.4); }
+.note { text-align:center; margin-top:16px; color:#9CA3AF; font-size:13px; }
+.note a { color:#667EEA; }
+@media (max-width: 480px) { .row { grid-template-columns:1fr; } .card { padding:24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <h1>🎉 Party Planner</h1>
+    <p>Plan your child's birthday in 60 seconds</p>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="num">1</div><div class="lbl">Fill form</div></div>
+    <div class="step"><div class="num">2</div><div class="lbl">Get link</div></div>
+    <div class="step"><div class="num">3</div><div class="lbl">Share!</div></div>
+  </div>
+  <div class="card">
+    <h2>Create Your Party Plan</h2>
+    <form method="POST" action="/create">
+      <div class="row">
+        <div class="field">
+          <label>Child's Name</label>
+          <input name="name" placeholder="Emma" required>
+        </div>
+        <div class="field">
+          <label>Age Turning</label>
+          <input name="age" type="number" min="1" max="16" placeholder="6" required>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Party Date</label>
+          <input name="date" type="date" required>
+        </div>
+        <div class="field">
+          <label>Start Time</label>
+          <input name="time" type="time" value="14:00" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Venue / Location</label>
+        <input name="venue" placeholder="Our backyard, 123 Maple St, Austin TX" required>
+      </div>
+      <div class="field">
+        <label>Party Theme</label>
+        <select name="theme" required>
+          {% for t, d in themes.items() %}
+          <option value="{{ t }}">{{ d.emoji }} {{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Your Email <span class="optional">(optional — to save your party later)</span></label>
+        <input name="email" type="email" placeholder="parent@email.com">
+      </div>
+      <button type="submit" class="submit-btn">Create My Party Plan →</button>
+    </form>
+    <div class="note">No account needed &bull; Free forever &bull; <a href="#">How it works</a></div>
+  </div>
+</div>
+</body>
+</html>"""
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #F8F9FA 0%, #E8E6F0 100%);
-            color: var(--dark);
-            min-height: 100vh;
-        }
+# ─── Host Dashboard ────────────────────────────────────────
 
-        /* ── Navigation ── */
-        .navbar {
-            background: var(--white);
-            padding: 16px 32px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: var(--shadow);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        .navbar .logo {
-            font-size: 24px;
-            font-weight: 800;
-            color: var(--primary);
-        }
-        .navbar nav a {
-            margin-left: 24px;
-            text-decoration: none;
-            color: var(--gray);
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        .navbar nav a:hover, .navbar nav a.active { color: var(--primary); }
-        .navbar .premium-btn {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-            color: white;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 14px;
-        }
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ name }}'s Party Plan — Birthday Party Planner</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #F3F4F6;
+  color: #1F2937;
+}
+.navbar {
+  background:white; padding:14px 24px;
+  display:flex; justify-content:space-between; align-items:center;
+  box-shadow:0 1px 4px rgba(0,0,0,0.08); position:sticky; top:0; z-index:10;
+}
+.nav-logo { font-size:20px; font-weight:800; color:#667EEA; }
+.nav-new { background:#667EEA; color:white; padding:8px 18px; border-radius:20px;
+  text-decoration:none; font-size:14px; font-weight:600; }
+.hero {
+  background: {{ gradient }};
+  color:white; padding:40px 24px; text-align:center;
+}
+.hero h1 { font-size:32px; font-weight:900; margin-bottom:6px; }
+.hero .sub { font-size:16px; opacity:0.9; margin-bottom:24px; }
+.hero .countdown {
+  display:inline-block; background:rgba(255,255,255,0.2);
+  padding:10px 28px; border-radius:30px; font-size:22px; font-weight:700;
+  backdrop-filter:blur(10px);
+}
+.container { max-width:900px; margin:0 auto; padding:24px; }
 
-        /* ── Main Content ── */
-        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+/* Share Box */
+.share-box {
+  background:white; border-radius:16px;
+  box-shadow:0 2px 12px rgba(0,0,0,0.08);
+  padding:24px; margin-bottom:20px;
+  border:2px solid #667EEA;
+}
+.share-box h2 { font-size:18px; margin-bottom:4px; color:#667EEA; }
+.share-box p { font-size:14px; color:#6B7280; margin-bottom:16px; }
+.link-row { display:flex; gap:10px; }
+.link-row input {
+  flex:1; padding:12px 14px; border:2px solid #E5E7EB; border-radius:10px;
+  font-size:13px; color:#374151; background:#F9FAFB;
+}
+.copy-btn {
+  padding:12px 20px; background:#667EEA; color:white; border:none;
+  border-radius:10px; font-weight:600; cursor:pointer; white-space:nowrap;
+  font-size:14px;
+}
+.copy-btn:hover { background:#5A67D8; }
+.copy-success { color:#059669; font-size:13px; margin-top:8px; display:none; }
 
-        /* ── Hero Section ── */
-        .hero {
-            background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 50%, var(--accent) 100%);
-            color: white;
-            border-radius: var(--radius);
-            padding: 48px;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-        .hero h1 { font-size: 36px; margin-bottom: 8px; }
-        .hero .subtitle { opacity: 0.9; font-size: 18px; margin-bottom: 24px; }
-        .hero .countdown {
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 12px 32px;
-            border-radius: 30px;
-            font-size: 24px;
-            font-weight: 700;
-            backdrop-filter: blur(10px);
-        }
+/* Cards */
+.card {
+  background:white; border-radius:16px;
+  box-shadow:0 2px 12px rgba(0,0,0,0.08);
+  padding:24px; margin-bottom:20px;
+}
+.card h2 { font-size:18px; font-weight:700; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
 
-        /* ── Cards ── */
-        .card {
-            background: var(--white);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 24px;
-            margin-bottom: 20px;
-        }
-        .card h2 {
-            font-size: 20px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+/* Party Details */
+.details-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.detail-item { background:#F9FAFB; border-radius:10px; padding:14px; }
+.detail-item .dl { font-size:12px; color:#9CA3AF; margin-bottom:4px; }
+.detail-item .dv { font-size:16px; font-weight:600; }
 
-        /* ── Stats Grid ── */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .stat-card {
-            background: var(--white);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 20px;
-        }
-        .stat-card .label { color: var(--gray); font-size: 14px; margin-bottom: 4px; }
-        .stat-card .value { font-size: 28px; font-weight: 700; }
-        .stat-card .sub { color: var(--gray); font-size: 13px; margin-top: 4px; }
+/* Shopping List */
+.shop-item { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid #F3F4F6; gap:12px; }
+.shop-item:last-child { border-bottom:none; }
+.shop-name { flex:1; font-size:15px; }
+.amazon-btn {
+  display:inline-block; background:#FF9900; color:#111; padding:7px 14px;
+  border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
+  white-space:nowrap; transition:background 0.2s;
+}
+.amazon-btn:hover { background:#E88A00; }
 
-        /* ── Progress Bar ── */
-        .progress-bar {
-            height: 10px;
-            background: #EDF2F7;
-            border-radius: 5px;
-            overflow: hidden;
-            margin: 8px 0;
-        }
-        .progress-bar .fill {
-            height: 100%;
-            border-radius: 5px;
-            transition: width 0.6s ease;
-        }
-        .fill-green { background: var(--success); }
-        .fill-blue { background: #4299E1; }
-        .fill-purple { background: var(--primary); }
-        .fill-pink { background: var(--accent); }
+/* Tips */
+.tip-row { display:flex; align-items:flex-start; padding:12px 0; border-bottom:1px solid #F3F4F6; gap:12px; }
+.tip-row:last-child { border-bottom:none; }
+.tip-icon { font-size:22px; flex-shrink:0; }
+.tip-text { flex:1; font-size:14px; color:#374151; line-height:1.5; }
+.tip-save { background:#D1FAE5; color:#065F46; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:700; white-space:nowrap; }
 
-        /* ── Guest List ── */
-        .guest-list { width: 100%; border-collapse: collapse; }
-        .guest-list th {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 2px solid #EDF2F7;
-            color: var(--gray);
-            font-size: 13px;
-            text-transform: uppercase;
-        }
-        .guest-list td {
-            padding: 12px;
-            border-bottom: 1px solid #EDF2F7;
-        }
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .badge-green { background: #C6F6D5; color: #22543D; }
-        .badge-yellow { background: #FEFCBF; color: #744210; }
-        .badge-red { background: #FED7D7; color: #822727; }
-        .badge-blue { background: #BEE3F8; color: #2A4365; }
+/* Signup nudge */
+.nudge {
+  background:linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+  color:white; border-radius:16px; padding:24px; text-align:center; margin-bottom:20px;
+}
+.nudge h3 { font-size:18px; margin-bottom:6px; }
+.nudge p { font-size:14px; opacity:0.9; margin-bottom:16px; }
+.nudge-btn {
+  background:white; color:#667EEA; padding:10px 28px;
+  border-radius:20px; font-weight:700; text-decoration:none; font-size:15px;
+}
 
-        /* ── Shopping List ── */
-        .shop-item {
-            display: flex;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #EDF2F7;
-        }
-        .shop-item:last-child { border-bottom: none; }
-        .shop-check {
-            width: 24px; height: 24px;
-            border-radius: 50%;
-            border: 2px solid #CBD5E0;
-            margin-right: 12px;
-            display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0;
-        }
-        .shop-check.done {
-            background: var(--success);
-            border-color: var(--success);
-            color: white;
-            font-size: 14px;
-        }
-        .shop-name { flex: 1; }
-        .shop-name.done-text { text-decoration: line-through; color: var(--gray); }
-        .shop-store {
-            font-size: 12px;
-            color: var(--gray);
-            margin-right: 16px;
-        }
-        .shop-price { font-weight: 600; min-width: 60px; text-align: right; }
-
-        /* ── Checklist ── */
-        .checklist-phase { margin-bottom: 20px; }
-        .phase-title {
-            font-weight: 700;
-            color: var(--primary);
-            margin-bottom: 8px;
-            font-size: 16px;
-        }
-        .check-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 0;
-            gap: 10px;
-        }
-        .check-icon { font-size: 18px; width: 24px; text-align: center; }
-        .check-text.done { text-decoration: line-through; color: var(--gray); }
-
-        /* ── Invitation ── */
-        .invitation-card {
-            background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
-            color: white;
-            border-radius: var(--radius);
-            padding: 40px;
-            text-align: center;
-            margin: 20px 0;
-        }
-        .invitation-card h3 { font-size: 28px; margin-bottom: 16px; }
-        .invitation-card p { font-size: 16px; margin-bottom: 8px; opacity: 0.95; }
-        .invitation-card .detail { font-size: 18px; margin-bottom: 6px; }
-        .invitation-card .rsvp-note {
-            margin-top: 20px;
-            background: rgba(255,255,255,0.15);
-            padding: 12px 24px;
-            border-radius: 10px;
-            font-size: 14px;
-        }
-
-        /* ── Tips ── */
-        .tip-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 14px 0;
-            border-bottom: 1px solid #EDF2F7;
-        }
-        .tip-item:last-child { border-bottom: none; }
-        .tip-cat { font-weight: 600; min-width: 140px; }
-        .tip-text { flex: 1; color: var(--gray); margin: 0 16px; }
-        .tip-savings {
-            background: #C6F6D5;
-            color: #22543D;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        /* ── Pricing ── */
-        .pricing-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
-        .price-card {
-            border: 2px solid #EDF2F7;
-            border-radius: var(--radius);
-            padding: 32px;
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .price-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
-        .price-card.featured { border-color: var(--primary); position: relative; }
-        .price-card.featured::before {
-            content: "MOST POPULAR";
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--primary);
-            color: white;
-            padding: 4px 16px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-        .price-card h3 { font-size: 22px; margin-bottom: 8px; }
-        .price-card .price { font-size: 36px; font-weight: 800; color: var(--primary); }
-        .price-card .price span { font-size: 16px; font-weight: 400; color: var(--gray); }
-        .price-card ul { list-style: none; margin: 20px 0; text-align: left; }
-        .price-card ul li { padding: 8px 0; border-bottom: 1px solid #EDF2F7; font-size: 14px; }
-        .price-card ul li::before { content: "✓ "; color: var(--success); font-weight: 700; }
-        .cta-btn {
-            display: inline-block;
-            padding: 12px 32px;
-            border-radius: 25px;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            font-size: 16px;
-            transition: transform 0.2s;
-        }
-        .cta-btn:hover { transform: scale(1.05); }
-        .cta-primary { background: var(--primary); color: white; }
-        .cta-outline { background: white; color: var(--primary); border: 2px solid var(--primary); }
-
-        /* ── Sections ── */
-        .section-title {
-            font-size: 14px;
-            text-transform: uppercase;
-            color: var(--gray);
-            letter-spacing: 1px;
-            margin-bottom: 16px;
-        }
-
-        .two-col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        /* ── Footer ── */
-        .footer {
-            text-align: center;
-            padding: 40px;
-            color: var(--gray);
-            font-size: 14px;
-        }
-
-        /* ── Responsive ── */
-        @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .hero { padding: 24px; }
-            .hero h1 { font-size: 24px; }
-            .two-col { grid-template-columns: 1fr; }
-            .navbar nav { display: none; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-        }
-    </style>
+.footer { text-align:center; padding:32px; color:#9CA3AF; font-size:13px; }
+@media (max-width:600px) { .hero h1 { font-size:24px; } .link-row { flex-direction:column; } }
+</style>
 </head>
 <body>
 
-<!-- ── NAVBAR ── -->
 <div class="navbar">
-    <div class="logo">🎉 Party Planner</div>
-    <nav>
-        <a href="#dashboard" class="active">Dashboard</a>
-        <a href="#guests">Guests</a>
-        <a href="#shopping">Shopping</a>
-        <a href="#checklist">Checklist</a>
-        <a href="#invitation">Invitation</a>
-        <a href="#pricing">Pricing</a>
-    </nav>
-    <a href="#pricing" class="premium-btn">✨ Go Premium</a>
+  <div class="nav-logo">🎉 Party Planner</div>
+  <a href="/" class="nav-new">+ New Party</a>
+</div>
+
+<div class="hero">
+  <h1>{{ emoji }} {{ name }}'s {{ age }}th Birthday Party!</h1>
+  <div class="sub">{{ theme }} Theme &bull; {{ venue }}</div>
+  <div class="countdown">⏰ {{ days_until }} days to go!</div>
 </div>
 
 <div class="container">
 
-<!-- ── HERO ── -->
-<div class="hero" id="dashboard">
-    <h1>🕷️ {{ party.child_name }}'s {{ party.child_age }}th Birthday Party</h1>
-    <div class="subtitle">{{ party.theme }} Theme &bull; {{ party.venue }}, {{ party.venue_address }}</div>
-    <div class="countdown">⏰ {{ days_until }} days to go!</div>
-</div>
-
-<!-- ── STATS ── -->
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="label">👥 Guests</div>
-        <div class="value">{{ confirmed }}<span style="font-size:16px;color:var(--gray)"> / {{ total_guests }}</span></div>
-        <div class="progress-bar"><div class="fill fill-green" style="width:{{ (confirmed/total_guests*100)|round }}%"></div></div>
-        <div class="sub">{{ confirmed }} confirmed &bull; {{ pending }} pending &bull; {{ declined }} declined</div>
+  <!-- Share Link -->
+  <div class="share-box">
+    <h2>📬 Your Guest Invite Link</h2>
+    <p>Copy and share this link with guests — they'll see a beautiful invitation and can RSVP.</p>
+    <div class="link-row">
+      <input type="text" id="invite-url" value="{{ invite_url }}" readonly>
+      <button class="copy-btn" onclick="copyLink()">Copy Link</button>
     </div>
-    <div class="stat-card">
-        <div class="label">🛒 Shopping</div>
-        <div class="value">{{ bought_items }}<span style="font-size:16px;color:var(--gray)"> / {{ total_items }}</span></div>
-        <div class="progress-bar"><div class="fill fill-blue" style="width:{{ (bought_items/total_items*100)|round }}%"></div></div>
-        <div class="sub">{{ total_items - bought_items }} items left to buy</div>
+    <div class="copy-success" id="copy-msg">✓ Copied to clipboard!</div>
+  </div>
+
+  <!-- Party Details -->
+  <div class="card">
+    <h2>📋 Party Details</h2>
+    <div class="details-grid">
+      <div class="detail-item"><div class="dl">Date</div><div class="dv">{{ date_fmt }}</div></div>
+      <div class="detail-item"><div class="dl">Time</div><div class="dv">{{ time_fmt }}</div></div>
+      <div class="detail-item"><div class="dl">Venue</div><div class="dv">{{ venue }}</div></div>
+      <div class="detail-item"><div class="dl">Theme</div><div class="dv">{{ emoji }} {{ theme }}</div></div>
     </div>
-    <div class="stat-card">
-        <div class="label">💰 Budget</div>
-        <div class="value">${{ "%.2f"|format(spent) }}<span style="font-size:16px;color:var(--gray)"> / ${{ "%.0f"|format(party.budget) }}</span></div>
-        <div class="progress-bar"><div class="fill fill-purple" style="width:{{ (spent/party.budget*100)|round }}%"></div></div>
-        <div class="sub" style="color:var(--success)">${{ "%.2f"|format(party.budget - spent) }} remaining — under budget! 🎉</div>
-    </div>
-    <div class="stat-card">
-        <div class="label">📋 Checklist</div>
-        <div class="value">{{ tasks_done }}<span style="font-size:16px;color:var(--gray)"> / {{ total_tasks }}</span></div>
-        <div class="progress-bar"><div class="fill fill-pink" style="width:{{ (tasks_done/total_tasks*100)|round }}%"></div></div>
-        <div class="sub">{{ total_tasks - tasks_done }} tasks remaining</div>
-    </div>
-</div>
+  </div>
 
-<!-- ── ALERTS ── -->
-{% if pending > 0 %}
-<div class="card" style="border-left: 4px solid var(--warning); background: #FFFDF0;">
-    <strong>⚠️ Needs Attention:</strong>
-    {{ pending }} guest(s) haven't RSVP'd yet — consider a friendly follow-up!
-    {% for g in party.guests %}{% if g.rsvp == "pending" and g.email %} &bull; {{ g.name }}{% endif %}{% endfor %}
-</div>
-{% endif %}
-
-<!-- ── TWO COLUMN: GUESTS + SHOPPING ── -->
-<div class="two-col">
-
-<!-- GUEST LIST -->
-<div class="card" id="guests">
-    <h2>👥 Guest List</h2>
-    <table class="guest-list">
-        <thead>
-            <tr><th>Name</th><th>RSVP</th><th>Dietary</th></tr>
-        </thead>
-        <tbody>
-            {% for g in party.guests %}
-            <tr>
-                <td><strong>{{ g.name }}</strong><br><span style="font-size:12px;color:var(--gray)">{{ g.email }}</span></td>
-                <td>
-                    {% if g.rsvp == "confirmed" %}<span class="badge badge-green">✓ Coming</span>
-                    {% elif g.rsvp == "declined" %}<span class="badge badge-red">✗ Can't make it</span>
-                    {% else %}<span class="badge badge-yellow">? Pending</span>{% endif %}
-                </td>
-                <td>{% if g.dietary %}<span class="badge badge-blue">{{ g.dietary }}</span>{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<!-- SHOPPING LIST -->
-<div class="card" id="shopping">
+  <!-- Shopping List -->
+  <div class="card">
     <h2>🛒 Shopping List</h2>
-    {% for item in party.shopping_list %}
-    <div class="shop-item">
-        <div class="shop-check {{ 'done' if item.bought else '' }}">{{ '✓' if item.bought else '' }}</div>
-        <div class="shop-name {{ 'done-text' if item.bought else '' }}">
-            {{ item.name }}
-        </div>
-        <div class="shop-store">{{ item.store }}</div>
-        <div class="shop-price">${{ "%.2f"|format(item.price * item.qty) }}</div>
-    </div>
-    {% endfor %}
-    <div style="margin-top:16px; padding-top:16px; border-top:2px solid #EDF2F7; display:flex; justify-content:space-between">
-        <span>Estimated total:</span>
-        <strong>${{ "%.2f"|format(estimated_total) }}</strong>
-    </div>
-</div>
-</div>
-
-<!-- ── MONEY SAVING TIPS ── -->
-<div class="card">
-    <h2>💡 Money-Saving Tips</h2>
-    {% for tip in party.saving_tips %}
-    <div class="tip-item">
-        <div class="tip-cat">{{ tip.category }}</div>
-        <div class="tip-text">{{ tip.tip }}</div>
-        <div class="tip-savings">Save ${{ tip.savings }}</div>
-    </div>
-    {% endfor %}
-    <div style="margin-top:16px; padding-top:16px; border-top:2px solid #EDF2F7; text-align:right">
-        <strong style="color:var(--success); font-size:18px">💰 Total potential savings: ${{ total_savings }}!</strong>
-    </div>
-</div>
-
-<!-- ── INVITATION ── -->
-<div id="invitation">
-    <div class="section-title">📧 Party Invitation (Evite-ready)</div>
-    <div class="invitation-card">
-        <p style="font-size:40px; margin-bottom:16px">🕷️</p>
-        <h3>You're Invited!</h3>
-        <p style="font-size:22px; margin-bottom:20px">Join us for <strong>{{ party.child_name }}'s {{ party.child_age }}th Birthday Party!</strong></p>
-        <div class="detail">🎨 Theme: {{ party.theme }}</div>
-        <div class="detail">📅 {{ party_date_formatted }}</div>
-        <div class="detail">🕐 {{ party.party_time }} – 5:00 PM</div>
-        <div class="detail">📍 {{ party.venue_address }}</div>
-        <div class="detail">🍕 Pizza, cake & fun activities!</div>
-        <p style="margin-top:16px; font-size:18px">🦸 Come dressed as your favorite superhero!</p>
-        <div class="rsvp-note">
-            📧 RSVP by email &bull; ⚠️ Please let us know about any food allergies
-        </div>
-    </div>
-</div>
-
-<!-- ── CHECKLIST ── -->
-<div class="card" id="checklist">
-    <h2>📋 Party Planning Checklist</h2>
-    {% for phase in party.checklist %}
-    <div class="checklist-phase">
-        <div class="phase-title">{{ phase.phase }}</div>
-        {% for item in phase.tasks %}
-        <div class="check-item">
-            <div class="check-icon">{{ '✅' if item.done else '⬜' }}</div>
-            <div class="check-text {{ 'done' if item.done else '' }}">
-                {{ item.task }}
-                {% if item.important and not item.done %}<span class="badge badge-yellow" style="margin-left:8px">Important</span>{% endif %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% endfor %}
-</div>
-
-<!-- ── PRICING ── -->
-<div id="pricing">
-    <div class="section-title">💎 Choose Your Plan</div>
-    <div class="pricing-grid">
-        <div class="price-card">
-            <h3>Free</h3>
-            <div class="price">$0</div>
-            <ul>
-                <li>1 active party</li>
-                <li>Up to 30 guests</li>
-                <li>Basic shopping list</li>
-                <li>Text export</li>
-                <li>3 invitation templates</li>
-            </ul>
-            <div class="cta-btn cta-outline">Current Plan</div>
-        </div>
-        <div class="price-card featured">
-            <h3>Premium</h3>
-            <div class="price">$49<span>/year</span></div>
-            <ul>
-                <li>Unlimited parties</li>
-                <li>Up to 100 guests</li>
-                <li>PDF & Excel export</li>
-                <li>30+ invitation templates</li>
-                <li>Shopping deal alerts</li>
-                <li>Ad-free experience</li>
-                <li>Priority support</li>
-            </ul>
-            <div class="cta-btn cta-primary">Upgrade Now</div>
-        </div>
-        <div class="price-card">
-            <h3>Party Pro</h3>
-            <div class="price">$199<span>/year</span></div>
-            <ul>
-                <li>Everything in Premium</li>
-                <li>Unlimited guests</li>
-                <li>Multi-user collaboration</li>
-                <li>Vendor network access</li>
-                <li>Dedicated account manager</li>
-                <li>API access</li>
-            </ul>
-            <div class="cta-btn cta-outline">Contact Sales</div>
-        </div>
-    </div>
-    <p style="text-align:center; margin-top:16px; color:var(--gray)">
-        💡 Premium pays for itself: save $50+ per party in shopping deals alone!
+    <p style="font-size:14px;color:#6B7280;margin-bottom:16px;">
+      Everything you need for a {{ theme }} party. Buy on Amazon with one click.
     </p>
-</div>
+    {% for item in shopping %}
+    <div class="shop-item">
+      <div class="shop-name">{{ item.label }}</div>
+      <a href="{{ item.url }}" target="_blank" class="amazon-btn">🛒 Amazon</a>
+    </div>
+    {% endfor %}
+    <div style="margin-top:16px;padding:12px;background:#FFF7ED;border-radius:10px;font-size:13px;color:#92400E;">
+      💡 <strong>Pro tip:</strong> Check Costco for cake ($25 vs $80+ at bakeries) and Dollar Tree for party favors!
+    </div>
+  </div>
+
+  <!-- Money Tips -->
+  <div class="card">
+    <h2>💡 Money-Saving Tips</h2>
+    <div class="tip-row">
+      <div class="tip-icon">🎂</div>
+      <div class="tip-text"><strong>Cake:</strong> Costco sheet cake $24.99 — feeds 48, looks amazing</div>
+      <div class="tip-save">Save $55</div>
+    </div>
+    <div class="tip-row">
+      <div class="tip-icon">🍕</div>
+      <div class="tip-text"><strong>Food:</strong> Little Caesars $6/pizza vs delivery $15/pizza</div>
+      <div class="tip-save">Save $27</div>
+    </div>
+    <div class="tip-row">
+      <div class="tip-icon">📧</div>
+      <div class="tip-text"><strong>Invites:</strong> Use this free link vs printed Evite cards ($25+)</div>
+      <div class="tip-save">Save $25</div>
+    </div>
+    <div class="tip-row">
+      <div class="tip-icon">🎁</div>
+      <div class="tip-text"><strong>Goody bags:</strong> Oriental Trading bulk $1.50/bag vs store $4/bag</div>
+      <div class="tip-save">Save $37</div>
+    </div>
+    <div style="text-align:right;margin-top:12px;font-size:16px;font-weight:700;color:#059669;">
+      Total potential savings: $144 🎉
+    </div>
+  </div>
+
+  <!-- Checklist -->
+  <div class="card">
+    <h2>✅ Party Checklist</h2>
+    {% for phase, tasks in checklist %}
+    <div style="margin-bottom:16px;">
+      <div style="font-weight:700;color:#667EEA;margin-bottom:8px;font-size:15px;">{{ phase }}</div>
+      {% for t in tasks %}
+      <div style="padding:8px 0;border-bottom:1px solid #F9FAFB;display:flex;gap:10px;align-items:center;font-size:14px;">
+        <span>⬜</span><span>{{ t }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Signup nudge -->
+  <div class="nudge">
+    <h3>💾 Save Your Party Plan</h3>
+    <p>Create a free account to save this party, track RSVPs, and manage shopping from any device.</p>
+    <a href="/#signup" class="nudge-btn">Create Free Account</a>
+  </div>
 
 </div>
 
-<!-- ── FOOTER ── -->
 <div class="footer">
-    <p>🎉 Birthday Party Planner &bull; Made with ❤️ for busy parents</p>
-    <p style="margin-top:8px">Plan better parties. Save time. Save money.</p>
+  🎉 Birthday Party Planner &bull; Made for busy American parents<br>
+  <span style="margin-top:4px;display:block;">Questions? We earn a small commission from Amazon links at no extra cost to you.</span>
 </div>
 
+<script>
+function copyLink() {
+  var el = document.getElementById('invite-url');
+  el.select(); el.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(el.value).then(function() {
+    document.getElementById('copy-msg').style.display = 'block';
+    setTimeout(function(){ document.getElementById('copy-msg').style.display = 'none'; }, 3000);
+  });
+}
+</script>
 </body>
-</html>
-"""
+</html>"""
 
 
-# ─── Routes ──────────────────────────────────────────────
+# ─── Guest Invitation ──────────────────────────────────────
 
-class DotDict(dict):
-    """Allow dict.key access for Jinja templates"""
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            raise AttributeError(key)
+INVITE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>You're Invited to {{ name }}'s Birthday Party!</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: {{ gradient }};
+  min-height:100vh;
+  padding: 24px;
+}
+.wrap { max-width:540px; margin:0 auto; }
+.card {
+  background:white; border-radius:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.25);
+  overflow:hidden; margin-bottom:20px;
+}
+.invite-header {
+  background: {{ gradient }};
+  color:white; padding:48px 32px; text-align:center;
+}
+.invite-header .big-emoji { font-size:64px; margin-bottom:12px; }
+.invite-header h1 { font-size:28px; font-weight:900; margin-bottom:8px; }
+.invite-header .subtitle { font-size:17px; opacity:0.9; }
+.invite-body { padding:32px; }
+.detail-row { display:flex; align-items:flex-start; gap:14px; padding:14px 0; border-bottom:1px solid #F3F4F6; }
+.detail-row:last-child { border-bottom:none; }
+.detail-icon { font-size:22px; flex-shrink:0; width:32px; text-align:center; }
+.detail-text .dl { font-size:12px; color:#9CA3AF; margin-bottom:2px; }
+.detail-text .dv { font-size:16px; font-weight:600; color:#1F2937; }
+.rsvp-section { padding:32px; background:#F9FAFB; text-align:center; }
+.rsvp-section h3 { font-size:20px; font-weight:700; margin-bottom:8px; }
+.rsvp-section p { color:#6B7280; font-size:14px; margin-bottom:20px; }
+.rsvp-buttons { display:flex; gap:12px; justify-content:center; }
+.rsvp-yes {
+  flex:1; max-width:180px; padding:14px 20px;
+  background:linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color:white; border-radius:12px; text-decoration:none;
+  font-weight:700; font-size:16px; text-align:center;
+  transition:transform 0.2s;
+}
+.rsvp-no {
+  flex:1; max-width:180px; padding:14px 20px;
+  background:#F3F4F6; color:#374151; border-radius:12px;
+  text-decoration:none; font-weight:700; font-size:16px; text-align:center;
+  transition:transform 0.2s;
+}
+.rsvp-yes:hover, .rsvp-no:hover { transform:scale(1.04); }
+.gift-card { background:white; border-radius:20px; box-shadow:0 2px 12px rgba(0,0,0,0.1); padding:24px; margin-bottom:20px; }
+.gift-card h3 { font-size:18px; font-weight:700; margin-bottom:16px; }
+.gift-item { display:flex; align-items:center; padding:12px 0; border-bottom:1px solid #F9FAFB; gap:12px; }
+.gift-item:last-child { border-bottom:none; }
+.gift-name { flex:1; font-size:14px; }
+.amazon-btn {
+  background:#FF9900; color:#111; padding:7px 14px;
+  border-radius:8px; text-decoration:none; font-size:12px; font-weight:700;
+  white-space:nowrap;
+}
+.footer { text-align:center; color:rgba(255,255,255,0.7); font-size:13px; padding:16px; }
+.footer a { color:white; }
+@media (max-width:480px) { .invite-header { padding:32px 20px; } .invite-body { padding:20px; } .rsvp-section { padding:24px 20px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
 
-def to_dot(d):
-    if isinstance(d, dict):
-        return DotDict({k: to_dot(v) for k, v in d.items()})
-    elif isinstance(d, list):
-        return [to_dot(i) for i in d]
-    return d
+  <!-- Invitation Card -->
+  <div class="card">
+    <div class="invite-header">
+      <div class="big-emoji">{{ emoji }}</div>
+      <h1>You're Invited!</h1>
+      <div class="subtitle">Join us for <strong>{{ name }}'s {{ age }}{{ suffix }} Birthday!</strong></div>
+    </div>
+    <div class="invite-body">
+      <div class="detail-row">
+        <div class="detail-icon">🎨</div>
+        <div class="detail-text"><div class="dl">Theme</div><div class="dv">{{ emoji }} {{ theme }}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-icon">📅</div>
+        <div class="detail-text"><div class="dl">Date</div><div class="dv">{{ date_fmt }}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-icon">🕐</div>
+        <div class="detail-text"><div class="dl">Time</div><div class="dv">{{ time_fmt }}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-icon">📍</div>
+        <div class="detail-text"><div class="dl">Location</div><div class="dv">{{ venue }}</div></div>
+      </div>
+    </div>
+    <div class="rsvp-section">
+      <h3>Will you be there? 🎉</h3>
+      <p>Please let us know so we can plan for you!</p>
+      <div class="rsvp-buttons">
+        <a href="{{ rsvp_yes }}" class="rsvp-yes">✓ Yes, I'm coming!</a>
+        <a href="{{ rsvp_no }}" class="rsvp-no">✗ Can't make it</a>
+      </div>
+    </div>
+  </div>
 
+  <!-- Gift Ideas -->
+  <div class="gift-card">
+    <h3>🎁 Gift Ideas for {{ name }}</h3>
+    {% for gift in gifts %}
+    <div class="gift-item">
+      <div class="gift-name">{{ gift.label }}</div>
+      <a href="{{ gift.url }}" target="_blank" class="amazon-btn">🛒 Amazon</a>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<div class="footer">
+  🎉 <a href="/">Create your own free party plan</a> &bull; Birthday Party Planner
+</div>
+</body>
+</html>"""
+
+
+# ─── Routes ───────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    party = to_dot(DEMO_PARTY)
+    return render_template_string(LANDING_HTML, themes=THEMES)
 
-    # Calculate stats
-    confirmed = sum(1 for g in party.guests if g.rsvp == "confirmed")
-    pending = sum(1 for g in party.guests if g.rsvp == "pending")
-    declined = sum(1 for g in party.guests if g.rsvp == "declined")
-    total_guests = len(party.guests)
 
-    bought_items = sum(1 for i in party.shopping_list if i.bought)
-    total_items = len(party.shopping_list)
+@app.route("/create", methods=["POST"])
+def create():
+    data = {
+        "name": request.form.get("name", "").strip(),
+        "age": int(request.form.get("age", 6)),
+        "date": request.form.get("date", ""),
+        "time": request.form.get("time", "14:00"),
+        "venue": request.form.get("venue", "").strip(),
+        "theme": request.form.get("theme", "Spider-Man"),
+        "email": request.form.get("email", "").strip(),
+    }
+    b64 = encode_party(data)
+    return redirect(f"/party/{b64}")
 
-    spent = sum(i.actual * i.qty for i in party.shopping_list if i.bought)
-    estimated_total = sum(i.price * i.qty for i in party.shopping_list)
 
-    total_tasks = sum(len(p.tasks) for p in party.checklist)
-    tasks_done = sum(sum(1 for i in p.tasks if i.done) for p in party.checklist)
-
-    total_savings = sum(t.savings for t in party.saving_tips)
-
-    # Days until party
+@app.route("/party/<b64>")
+def party(b64):
     try:
-        party_dt = datetime.strptime(party.party_date, "%Y-%m-%d")
-        days_until = (party_dt - datetime.now()).days
-    except:
-        days_until = 44
+        data = decode_party(b64)
+    except Exception:
+        return redirect("/")
 
-    # Format date
+    theme_key = data.get("theme", "Spider-Man")
+    theme = THEMES.get(theme_key, THEMES["Spider-Man"])
+
+    # Shopping list with affiliate links
+    shopping = [
+        {"label": item.replace(theme_key + " ", "").replace(theme_key.lower() + " ", "").title() if item.startswith(theme_key.lower()) else item.title(),
+         "url": amazon_url(item)}
+        for item in theme["items"]
+    ]
+
+    # Checklist
+    checklist = [
+        ("4 Weeks Before", [
+            "Choose and book venue",
+            "Finalize guest list",
+            "Send out invitations (share the invite link!)",
+        ]),
+        ("3 Weeks Before", [
+            "Order cake (try Costco — $25, feeds 48!)",
+            "Order supplies on Amazon",
+            "Plan activities and games",
+        ]),
+        ("1 Week Before", [
+            "Confirm RSVPs and headcount",
+            "Buy goody bag fillers (Dollar Tree!)",
+            "Buy pinata and candy",
+            "Order pizza (Little Caesars — best value!)",
+        ]),
+        ("Day Before", [
+            "Pick up cake",
+            "Set up decorations",
+            "Assemble goody bags",
+            "Charge phone/camera for pictures",
+        ]),
+        ("Party Day!", [
+            "Set up food and drinks",
+            "Hang pinata",
+            "HAVE FUN! 🎉",
+        ]),
+    ]
+
+    # Invite URL
+    invite_b64 = encode_party(data)
+    base_url = request.host_url.rstrip("/")
+    invite_url = f"{base_url}/invite/{invite_b64}"
+
+    # Date/time formatting
+    date_fmt = data["date"]
     try:
-        party_dt = datetime.strptime(party.party_date, "%Y-%m-%d")
-        party_date_formatted = party_dt.strftime("Saturday, %B %d, %Y")
-    except:
-        party_date_formatted = party.party_date
+        dt = datetime.strptime(data["date"], "%Y-%m-%d")
+        date_fmt = dt.strftime("%A, %B %d, %Y")
+        days_until = (dt - datetime.now()).days
+    except Exception:
+        days_until = "?"
+
+    time_fmt = data["time"]
+    try:
+        t = datetime.strptime(data["time"], "%H:%M")
+        time_fmt = t.strftime("%-I:%M %p")
+    except Exception:
+        pass
 
     return render_template_string(
-        HTML_TEMPLATE,
-        party=party,
-        confirmed=confirmed,
-        pending=pending,
-        declined=declined,
-        total_guests=total_guests,
-        bought_items=bought_items,
-        total_items=total_items,
-        spent=spent,
-        estimated_total=estimated_total,
-        total_tasks=total_tasks,
-        tasks_done=tasks_done,
-        total_savings=total_savings,
+        DASHBOARD_HTML,
+        name=data["name"],
+        age=data["age"],
+        theme=theme_key,
+        emoji=theme["emoji"],
+        gradient=theme["gradient"],
+        venue=data["venue"],
+        date_fmt=date_fmt,
+        time_fmt=time_fmt,
         days_until=days_until,
-        party_date_formatted=party_date_formatted,
+        invite_url=invite_url,
+        shopping=shopping,
+        checklist=checklist,
+    )
+
+
+@app.route("/invite/<b64>")
+def invite(b64):
+    try:
+        data = decode_party(b64)
+    except Exception:
+        return redirect("/")
+
+    theme_key = data.get("theme", "Spider-Man")
+    theme = THEMES.get(theme_key, THEMES["Spider-Man"])
+
+    # Age suffix
+    age = data["age"]
+    suffix = "th"
+    if age % 100 not in (11, 12, 13):
+        if age % 10 == 1: suffix = "st"
+        elif age % 10 == 2: suffix = "nd"
+        elif age % 10 == 3: suffix = "rd"
+
+    # Date/time
+    date_fmt = data["date"]
+    try:
+        dt = datetime.strptime(data["date"], "%Y-%m-%d")
+        date_fmt = dt.strftime("%A, %B %d, %Y")
+    except Exception:
+        pass
+
+    time_fmt = data["time"]
+    try:
+        t = datetime.strptime(data["time"], "%H:%M")
+        time_fmt = t.strftime("%-I:%M %p")
+    except Exception:
+        pass
+
+    # RSVP mailto links
+    email = data.get("email", "")
+    subject = f"RSVP - {data['name']}'s Birthday Party"
+    rsvp_yes = f"mailto:{email}?subject={subject}&body=Yes, we will be there!" if email else "#"
+    rsvp_no = f"mailto:{email}?subject={subject}&body=Sorry, we can't make it." if email else "#"
+
+    # Gift ideas
+    gift_queries = [
+        f"{theme_key} action figure toy",
+        f"{theme_key} board game kids",
+        f"LEGO set age {age}",
+        f"kids art craft kit",
+        f"kids book set age {age}",
+    ]
+    gifts = [{"label": q.title(), "url": amazon_url(q)} for q in gift_queries]
+
+    return render_template_string(
+        INVITE_HTML,
+        name=data["name"],
+        age=age,
+        suffix=suffix,
+        theme=theme_key,
+        emoji=theme["emoji"],
+        gradient=theme["gradient"],
+        venue=data["venue"],
+        date_fmt=date_fmt,
+        time_fmt=time_fmt,
+        rsvp_yes=rsvp_yes,
+        rsvp_no=rsvp_no,
+        gifts=gifts,
     )
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8080)
-    args = parser.parse_args()
-
-    print(f"\n🎉 Birthday Party Planner — US Edition")
-    print("=" * 50)
-    print(f"🌐 Open in your browser: http://localhost:{args.port}")
-    print("=" * 50)
-    print("\nPress Ctrl+C to stop the server\n")
-    app.run(host="0.0.0.0", port=args.port, debug=False)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
