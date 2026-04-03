@@ -12,12 +12,14 @@ class ChecklistItem:
     title: str
     completed: bool = False
     notes: str = ""
+    priority: str = "普通"  # 重要、普通、可选
 
     def to_dict(self):
         return {
             "title": self.title,
             "completed": self.completed,
-            "notes": self.notes
+            "notes": self.notes,
+            "priority": self.priority
         }
 
     @classmethod
@@ -84,31 +86,31 @@ class PartyChecklist:
         # 派对前30天
         phase_30 = ChecklistPhase("派对前1个月", 30)
         phase_30.items = [
-            ChecklistItem("确定派对日期和时间"),
-            ChecklistItem("预订派对场地"),
-            ChecklistItem("确定派对主题"),
-            ChecklistItem("列出客人名单"),
-            ChecklistItem("制定预算计划"),
+            ChecklistItem("确定派对日期和时间", priority="重要"),
+            ChecklistItem("预订派对场地", priority="重要"),
+            ChecklistItem("确定派对主题", priority="普通"),
+            ChecklistItem("列出客人名单", priority="重要"),
+            ChecklistItem("制定预算计划", priority="重要"),
         ]
         phases.append(phase_30)
 
         # 派对前21天
         phase_21 = ChecklistPhase("派对前3周", 21)
         phase_21.items = [
-            ChecklistItem("设计邀请函"),
-            ChecklistItem("购买或制作邀请函"),
-            ChecklistItem("确认场地细节（设施、规则等）"),
+            ChecklistItem("设计邀请函", priority="普通"),
+            ChecklistItem("购买或制作邀请函", priority="普通"),
+            ChecklistItem("确认场地细节（设施、规则等）", priority="重要"),
         ]
         phases.append(phase_21)
 
         # 派对前14天
         phase_14 = ChecklistPhase("派对前2周", 14)
         phase_14.items = [
-            ChecklistItem("发送邀请函给所有客人"),
-            ChecklistItem("预订生日蛋糕"),
-            ChecklistItem("购买装饰品（气球、横幅、彩带等）"),
-            ChecklistItem("计划派对活动和游戏"),
-            ChecklistItem("准备游戏道具和奖品"),
+            ChecklistItem("发送邀请函给所有客人", priority="重要"),
+            ChecklistItem("预订生日蛋糕", priority="重要"),
+            ChecklistItem("购买装饰品（气球、横幅、彩带等）", priority="普通"),
+            ChecklistItem("计划派对活动和游戏", priority="普通"),
+            ChecklistItem("准备游戏道具和奖品", priority="可选"),
         ]
         if child_age >= 6:
             phase_14.items.append(ChecklistItem("准备娱乐项目（音乐播放列表、视频等）"))

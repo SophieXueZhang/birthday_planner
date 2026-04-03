@@ -18,6 +18,8 @@ from models import Party, Guest, ShoppingItem
 from invitation import InvitationGenerator
 from shopping_suggestions import ShoppingSuggestions
 from checklist import PartyChecklist, ChecklistPhase
+from export import PartyExporter
+from validators import DataValidator
 
 
 console = Console()
@@ -68,16 +70,71 @@ class BirthdayPlannerApp:
         """创建新派对"""
         console.print("\n[bold green]创建新的派对计划[/bold green]\n")
 
-        # 收集基本信息
-        child_name = Prompt.ask("孩子的名字")
-        child_age = IntPrompt.ask("孩子的年龄")
-        party_date = Prompt.ask("派对日期 (YYYY-MM-DD)")
-        party_time = Prompt.ask("派对时间 (HH:MM)", default="14:00")
-        venue = Prompt.ask("场地名称")
-        venue_address = Prompt.ask("场地地址")
-        budget = FloatPrompt.ask("预算（元）")
-        theme = Prompt.ask("派对主题（可选，直接回车跳过）", default="")
-        guest_count = IntPrompt.ask("预计客人数量")
+        # 收集基本信息（带验证）
+        child_name = DataValidator.sanitize_string(Prompt.ask("孩子的名字"), 50)
+
+        # 验证年龄
+        while True:
+            child_age = IntPrompt.ask("孩子的年龄")
+            valid, msg = DataValidator.validate_age(child_age)
+            if valid:
+                break
+            console.print(f"[red]{msg}[/red]")
+            if not Confirm.ask("要重新输入吗？", default=True):
+                child_age = 6  # 默认值
+                break
+
+        # 验证日期
+        while True:
+            party_date = Prompt.ask("派对日期 (YYYY-MM-DD)")
+            valid, msg = DataValidator.validate_date(party_date)
+            if valid:
+                break
+            if "警告" in msg:
+                console.print(f"[yellow]{msg}[/yellow]")
+                if Confirm.ask("继续使用这个日期？"):
+                    break
+            else:
+                console.print(f"[red]{msg}[/red]")
+
+        # 验证时间
+        while True:
+            party_time = Prompt.ask("派对时间 (HH:MM)", default="14:00")
+            valid, msg = DataValidator.validate_time(party_time)
+            if valid:
+                break
+            console.print(f"[red]{msg}[/red]")
+
+        venue = DataValidator.sanitize_string(Prompt.ask("场地名称"), 100)
+        venue_address = DataValidator.sanitize_string(Prompt.ask("场地地址"), 200)
+
+        # 验证预算
+        while True:
+            budget = FloatPrompt.ask("预算（元）")
+            valid, msg = DataValidator.validate_budget(budget)
+            if valid:
+                break
+            if "警告" in msg:
+                console.print(f"[yellow]{msg}[/yellow]")
+                if Confirm.ask("继续使用这个预算？"):
+                    break
+            else:
+                console.print(f"[red]{msg}[/red]")
+
+        theme = DataValidator.sanitize_string(Prompt.ask("派对主题（可选，直接回车跳过）", default=""), 50)
+
+        # 验证客人数量
+        while True:
+            guest_count = IntPrompt.ask("预计客人数量")
+            valid, msg = DataValidator.validate_guest_count(guest_count)
+            if valid:
+                break
+            if "警告" in msg:
+                console.print(f"[yellow]{msg}[/yellow]")
+                if Confirm.ask("继续？"):
+                    break
+            else:
+                console.print(f"[red]{msg}[/red]")
 
         # 生成唯一ID
         party_id = f"party_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -172,10 +229,11 @@ class BirthdayPlannerApp:
             console.print("2. 管理购物清单")
             console.print("3. 派对检查清单")
             console.print("4. 生成邀请函")
-            console.print("5. 查看预算状态")
-            console.print("6. 保存并返回主菜单")
+            console.print("5. 📄 导出/打印")
+            console.print("6. 查看预算状态")
+            console.print("7. 保存并返回主菜单")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7"])
 
             if choice == "1":
                 self.manage_guests()
@@ -186,8 +244,10 @@ class BirthdayPlannerApp:
             elif choice == "4":
                 self.generate_invitations()
             elif choice == "5":
-                self.show_budget_status()
+                self.export_documents()
             elif choice == "6":
+                self.show_budget_status()
+            elif choice == "7":
                 self.save_party()
                 console.print("[green]✓ 已保存[/green]")
                 break
@@ -366,13 +426,14 @@ class BirthdayPlannerApp:
             console.print("2. 查看购物清单")
             console.print("3. 📱 简化版（手机友好）")
             console.print("4. 标记为已购买")
-            console.print("5. 删除购物项")
-            console.print("6. 按类别查看")
-            console.print("7. 按商店查看（采购路线）")
-            console.print("8. 按优先级查看")
-            console.print("9. 返回")
+            console.print("5. ✏️ 快速调整价格/数量")
+            console.print("6. 删除购物项")
+            console.print("7. 按类别查看")
+            console.print("8. 按商店查看（采购路线）")
+            console.print("9. 按优先级查看")
+            console.print("10. 返回")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
 
             if choice == "1":
                 self.add_shopping_item()
@@ -383,14 +444,16 @@ class BirthdayPlannerApp:
             elif choice == "4":
                 self.mark_as_purchased()
             elif choice == "5":
-                self.remove_shopping_item()
+                self.quick_edit_item()
             elif choice == "6":
-                self.show_by_category()
+                self.remove_shopping_item()
             elif choice == "7":
-                self.show_by_store()
+                self.show_by_category()
             elif choice == "8":
-                self.show_by_priority()
+                self.show_by_store()
             elif choice == "9":
+                self.show_by_priority()
+            elif choice == "10":
                 break
 
     def add_shopping_item(self):
@@ -477,6 +540,32 @@ class BirthdayPlannerApp:
                 actual_price = FloatPrompt.ask("实际单价（元）", default=item.estimated_price)
                 item.actual_price = actual_price
                 console.print(f"[green]✓ 已标记 {name} 为已购买[/green]")
+                return
+
+        console.print("[red]找不到该物品[/red]")
+
+    def quick_edit_item(self):
+        """快速编辑购物项价格和数量"""
+        if not self.current_party.shopping_list:
+            console.print("[yellow]购物清单为空[/yellow]")
+            return
+
+        self.show_shopping_list()
+        name = Prompt.ask("\n要编辑哪个物品？（输入名称）")
+
+        for item in self.current_party.shopping_list:
+            if item.name == name:
+                console.print(f"\n编辑：{name}")
+                console.print(f"当前预估价格：¥{item.estimated_price}")
+                console.print(f"当前数量：{item.quantity}")
+
+                new_price = FloatPrompt.ask("新的预估价格（回车跳过）", default=item.estimated_price)
+                new_quantity = IntPrompt.ask("新的数量（回车跳过）", default=item.quantity)
+
+                item.estimated_price = new_price
+                item.quantity = new_quantity
+
+                console.print(f"[green]✓ 已更新：{name} - ¥{new_price} x{new_quantity}[/green]")
                 return
 
         console.print("[red]找不到该物品[/red]")
@@ -836,7 +925,13 @@ class BirthdayPlannerApp:
             # 任务列表
             for item in phase.items:
                 status = "[green]✓[/green]" if item.completed else "[dim]□[/dim]"
-                console.print(f"  {status} {item.title}")
+                priority_mark = ""
+                if hasattr(item, 'priority'):
+                    if item.priority == "重要":
+                        priority_mark = " [bold red]★[/bold red]"
+                    elif item.priority == "可选":
+                        priority_mark = " [dim]☆[/dim]"
+                console.print(f"  {status} {item.title}{priority_mark}")
                 if item.notes:
                     console.print(f"     [dim]{item.notes}[/dim]")
 
@@ -859,7 +954,13 @@ class BirthdayPlannerApp:
 
         for item in current.items:
             status = "[green]✓[/green]" if item.completed else "[yellow]□[/yellow]"
-            console.print(f"  {status} {item.title}")
+            priority_mark = ""
+            if hasattr(item, 'priority'):
+                if item.priority == "重要":
+                    priority_mark = " [bold red]★[/bold red]"
+                elif item.priority == "可选":
+                    priority_mark = " [dim]☆[/dim]"
+            console.print(f"  {status} {item.title}{priority_mark}")
             if item.notes:
                 console.print(f"     [dim]{item.notes}[/dim]")
 
@@ -919,6 +1020,82 @@ class BirthdayPlannerApp:
             console.print(f"[yellow]• [{phase.name}] {item.title}[/yellow]")
             if item.notes:
                 console.print(f"  [dim]{item.notes}[/dim]")
+
+    def export_documents(self):
+        """导出和打印文档"""
+        if not self.current_party:
+            return
+
+        console.print("\n[bold cyan]导出/打印[/bold cyan]")
+        console.print("1. 导出客人签到表")
+        console.print("2. 导出购物清单（按商店）")
+        console.print("3. 导出购物清单（按优先级）")
+        console.print("4. 导出派对完整总结")
+        console.print("5. 生成微信简短邀请函")
+        console.print("6. 返回")
+
+        choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6"])
+
+        if choice == "6":
+            return
+
+        export_dir = os.path.join(self.data_dir, f"exports_{self.current_party.id}")
+        os.makedirs(export_dir, exist_ok=True)
+
+        if choice == "1":
+            content = PartyExporter.export_guest_checkin_sheet(self.current_party)
+            filepath = os.path.join(export_dir, "客人签到表.txt")
+            PartyExporter.save_export(content, filepath)
+            console.print(f"\n[green]✓ 已导出客人签到表[/green]")
+            console.print(f"[cyan]保存位置：{filepath}[/cyan]")
+
+            if Confirm.ask("\n要查看内容吗？"):
+                console.print("\n" + "=" * 60)
+                console.print(content)
+                console.print("=" * 60)
+
+        elif choice == "2":
+            content = PartyExporter.export_shopping_list_simple(self.current_party, by_store=True)
+            filepath = os.path.join(export_dir, "购物清单_按商店.txt")
+            PartyExporter.save_export(content, filepath)
+            console.print(f"\n[green]✓ 已导出购物清单（按商店）[/green]")
+            console.print(f"[cyan]保存位置：{filepath}[/cyan]")
+
+            if Confirm.ask("\n要查看内容吗？"):
+                console.print("\n" + "=" * 60)
+                console.print(content)
+                console.print("=" * 60)
+
+        elif choice == "3":
+            content = PartyExporter.export_shopping_list_simple(self.current_party, by_store=False)
+            filepath = os.path.join(export_dir, "购物清单_按优先级.txt")
+            PartyExporter.save_export(content, filepath)
+            console.print(f"\n[green]✓ 已导出购物清单（按优先级）[/green]")
+            console.print(f"[cyan]保存位置：{filepath}[/cyan]")
+
+        elif choice == "4":
+            content = PartyExporter.export_party_summary(self.current_party)
+            filepath = os.path.join(export_dir, "派对完整计划.txt")
+            PartyExporter.save_export(content, filepath)
+            console.print(f"\n[green]✓ 已导出派对完整总结[/green]")
+            console.print(f"[cyan]保存位置：{filepath}[/cyan]")
+
+            if Confirm.ask("\n要查看内容吗？"):
+                console.print("\n" + "=" * 60)
+                console.print(content)
+                console.print("=" * 60)
+
+        elif choice == "5":
+            content = PartyExporter.export_wechat_invitation(self.current_party)
+            filepath = os.path.join(export_dir, "微信邀请函.txt")
+            PartyExporter.save_export(content, filepath)
+            console.print(f"\n[green]✓ 已生成微信简短邀请函[/green]")
+            console.print(f"[cyan]保存位置：{filepath}[/cyan]")
+            console.print("\n[bold cyan]微信邀请函内容：[/bold cyan]")
+            console.print("=" * 60)
+            console.print(content)
+            console.print("=" * 60)
+            console.print("\n[dim]💡 提示：复制上面的内容发送到微信群即可[/dim]")
 
     def run(self):
         """运行应用"""
