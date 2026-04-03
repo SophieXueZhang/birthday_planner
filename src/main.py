@@ -21,6 +21,7 @@ from checklist import PartyChecklist, ChecklistPhase
 from export import PartyExporter
 from validators import DataValidator
 from helpers import UserHelper, MoneySaving
+from dashboard import PartyDashboard, QuickActions
 
 
 console = Console()
@@ -61,21 +62,24 @@ class BirthdayPlannerApp:
         while True:
             console.print("\n[bold cyan]主菜单[/bold cyan]")
             console.print("1. 创建新的派对计划")
-            console.print("2. 加载现有派对计划")
-            console.print("3. 📖 查看帮助")
-            console.print("4. 退出")
+            console.print("2. 📋 参考上次派对快速创建")
+            console.print("3. 加载现有派对计划")
+            console.print("4. 📖 查看帮助")
+            console.print("5. 退出")
 
-            choice = Prompt.ask("请选择（输入help查看帮助）", choices=["1", "2", "3", "4", "help", "?"])
+            choice = Prompt.ask("请选择（输入help查看帮助）", choices=["1", "2", "3", "4", "5", "help", "?"])
 
             if choice in ["help", "?"]:
                 UserHelper.show_help()
             elif choice == "1":
                 self.create_new_party()
             elif choice == "2":
-                self.load_party()
+                self.create_from_previous()
             elif choice == "3":
-                UserHelper.show_help()
+                self.load_party()
             elif choice == "4":
+                UserHelper.show_help()
+            elif choice == "5":
                 console.print("[yellow]再见！祝派对顺利！[/yellow]")
                 sys.exit(0)
 
@@ -177,6 +181,103 @@ class BirthdayPlannerApp:
         console.print(f"\n[green]✓ 派对计划已创建！[/green]")
         self.party_menu()
 
+    def create_from_previous(self):
+        """从上次派对快速创建"""
+        files = [f for f in os.listdir(self.data_dir) if f.endswith('.json')]
+
+        if not files:
+            console.print("[yellow]没有找到已保存的派对，将创建新派对[/yellow]")
+            self.create_new_party()
+            return
+
+        console.print("\n[bold cyan]选择要参考的派对：[/bold cyan]")
+        for i, file in enumerate(files, 1):
+            # 从文件名提取基本信息
+            console.print(f"{i}. {file[:-5]}")
+
+        choice = IntPrompt.ask("选择参考的派对（输入序号）", default=1)
+        if not (1 <= choice <= len(files)):
+            console.print("[red]无效的选择[/red]")
+            return
+
+        # 加载旧派对
+        filepath = os.path.join(self.data_dir, files[choice - 1])
+        old_party = Party.load_from_file(filepath)
+
+        console.print(f"\n[green]✓ 已加载：{old_party.child_name} 的派对作为参考[/green]")
+        console.print("\n[yellow]现在创建新派对，部分信息已预填：[/yellow]\n")
+
+        # 收集新派对信息（使用旧派对作为默认值）
+        child_name = Prompt.ask("孩子的名字", default=old_party.child_name)
+        child_age = IntPrompt.ask("孩子的年龄", default=old_party.child_age + 1)  # 默认增加1岁
+
+        # 验证日期
+        party_date_input = Prompt.ask(
+            "派对日期（支持：2026-05-01, 5月1日, 5-1）",
+            default=old_party.party_date
+        )
+        party_date = UserHelper.parse_friendly_date(party_date_input)
+
+        party_time = Prompt.ask("派对时间", default=old_party.party_time)
+        venue = Prompt.ask("派对场地", default=old_party.venue)
+        venue_address = Prompt.ask("场地地址", default=old_party.venue_address)
+        budget = FloatPrompt.ask("预算（元）", default=old_party.budget)
+        theme = Prompt.ask("派对主题（可选）", default=old_party.theme or "")
+        guest_count = IntPrompt.ask("预计客人数量", default=old_party.guest_count_expected)
+
+        # 生成新ID
+        party_id = f"party_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # 创建新派对
+        self.current_party = Party(
+            id=party_id,
+            child_name=child_name,
+            child_age=child_age,
+            party_date=party_date,
+            party_time=party_time,
+            venue=venue,
+            venue_address=venue_address,
+            budget=budget,
+            theme=theme,
+            guest_count_expected=guest_count
+        )
+
+        # 询问是否复制客人名单
+        if old_party.guests and Confirm.ask("\n要复制之前的客人名单吗？", default=True):
+            for old_guest in old_party.guests:
+                new_guest = Guest(
+                    name=old_guest.name,
+                    phone=old_guest.phone,
+                    email=old_guest.email,
+                    rsvp_status="pending",  # 重置RSVP状态
+                    notes=old_guest.notes
+                )
+                self.current_party.add_guest(new_guest)
+            console.print(f"[green]✓ 已复制 {len(old_party.guests)} 位客人[/green]")
+
+        # 询问是否复制购物清单
+        if old_party.shopping_list and Confirm.ask("要复制之前的购物清单吗？", default=True):
+            for old_item in old_party.shopping_list:
+                new_item = ShoppingItem(
+                    name=old_item.name,
+                    category=old_item.category,
+                    quantity=old_item.quantity,
+                    estimated_price=old_item.estimated_price,
+                    purchased=False,  # 重置购买状态
+                    notes=old_item.notes,
+                    store=old_item.store if hasattr(old_item, 'store') else "通用",
+                    priority=old_item.priority if hasattr(old_item, 'priority') else "必买"
+                )
+                self.current_party.add_shopping_item(new_item)
+            console.print(f"[green]✓ 已复制 {len(old_party.shopping_list)} 项购物清单[/green]")
+        elif Confirm.ask("要自动生成购物清单建议吗？"):
+            self.generate_shopping_suggestions()
+
+        self.save_party()
+        console.print(f"\n[green]✓ 新派对计划已创建！（参考了之前的派对）[/green]")
+        console.print(f"[cyan]节省了大量重复输入时间！[/cyan]")
+        self.party_menu()
+
     def generate_shopping_suggestions(self):
         """生成购物建议"""
         if not self.current_party:
@@ -238,7 +339,8 @@ class BirthdayPlannerApp:
     def party_menu(self):
         """派对管理菜单"""
         while True:
-            self.show_party_overview()
+            # 显示仪表盘总览
+            PartyDashboard.show_overview(self.current_party)
 
             console.print("\n[bold cyan]派对管理[/bold cyan]")
             console.print("1. 管理客人名单")
@@ -247,9 +349,10 @@ class BirthdayPlannerApp:
             console.print("4. 生成邀请函")
             console.print("5. 📄 导出/打印")
             console.print("6. 查看预算状态")
-            console.print("7. 保存并返回主菜单")
+            console.print("7. ⚡ 快捷操作")
+            console.print("8. 保存并返回主菜单")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
 
             if choice == "1":
                 self.manage_guests()
@@ -264,8 +367,49 @@ class BirthdayPlannerApp:
             elif choice == "6":
                 self.show_budget_status()
             elif choice == "7":
+                self.quick_actions_mode()
+            elif choice == "8":
                 self.save_party()
                 console.print("[green]✓ 已保存[/green]")
+                break
+
+    def quick_actions_mode(self):
+        """快捷操作模式"""
+        while True:
+            QuickActions.show_quick_menu()
+
+            choice = Prompt.ask("选择快捷操作", choices=["1", "2", "3", "4", "5", "0"])
+
+            if choice == "1":
+                QuickActions.quick_add_guest(self.current_party)
+                self.save_party()
+            elif choice == "2":
+                QuickActions.quick_add_shopping_item(self.current_party)
+                self.save_party()
+            elif choice == "3":
+                QuickActions.quick_mark_task(self.current_party)
+                self.save_party()
+            elif choice == "4":
+                self.show_budget_status()
+            elif choice == "5":
+                console.print("\n[bold cyan]快速导出选项：[/bold cyan]")
+                console.print("1. 客人签到表")
+                console.print("2. 购物清单（简化版）")
+                console.print("3. 微信邀请函")
+
+                export_choice = Prompt.ask("选择", choices=["1", "2", "3"])
+
+                if export_choice == "1":
+                    content = PartyExporter.export_guest_checkin_sheet(self.current_party)
+                    console.print("\n" + content)
+                elif export_choice == "2":
+                    content = PartyExporter.export_shopping_list_simple(self.current_party)
+                    console.print("\n" + content)
+                elif export_choice == "3":
+                    content = PartyExporter.export_wechat_invitation(self.current_party)
+                    console.print("\n" + content)
+
+            elif choice == "0":
                 break
 
     def show_party_overview(self):
