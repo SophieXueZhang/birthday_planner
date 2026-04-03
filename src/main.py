@@ -199,6 +199,22 @@ class BirthdayPlannerApp:
 
         party = self.current_party
 
+        # 计算倒计时
+        try:
+            from datetime import datetime
+            party_dt = datetime.strptime(party.party_date, "%Y-%m-%d")
+            today = datetime.now()
+            days_until = (party_dt - today).days
+
+            if days_until > 0:
+                countdown = f"[bold yellow]⏰ 距离派对还有 {days_until} 天[/bold yellow]"
+            elif days_until == 0:
+                countdown = "[bold red]🎉 派对就是今天！[/bold red]"
+            else:
+                countdown = f"[dim]派对已过去 {abs(days_until)} 天[/dim]"
+        except:
+            countdown = ""
+
         # RSVP统计
         pending_count = sum(1 for g in party.guests if g.rsvp_status == "pending")
         confirmed_count = sum(1 for g in party.guests if g.rsvp_status == "confirmed")
@@ -210,6 +226,7 @@ class BirthdayPlannerApp:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 小寿星：{party.child_name} ({party.child_age} 岁)
 日期：{party.party_date} {party.party_time}
+{countdown}
 场地：{party.venue}
 主题：{party.theme if party.theme else '无'}
 预算：¥{party.budget:.2f}
@@ -232,22 +249,25 @@ class BirthdayPlannerApp:
         while True:
             console.print("\n[bold cyan]客人管理[/bold cyan]")
             console.print("1. 添加客人")
-            console.print("2. 查看客人列表")
-            console.print("3. 更新RSVP状态")
-            console.print("4. 删除客人")
-            console.print("5. 返回")
+            console.print("2. 批量添加客人")
+            console.print("3. 查看客人列表")
+            console.print("4. 更新RSVP状态")
+            console.print("5. 删除客人")
+            console.print("6. 返回")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6"])
 
             if choice == "1":
                 self.add_guest()
             elif choice == "2":
-                self.show_guests()
+                self.batch_add_guests()
             elif choice == "3":
-                self.update_rsvp()
+                self.show_guests()
             elif choice == "4":
-                self.remove_guest()
+                self.update_rsvp()
             elif choice == "5":
+                self.remove_guest()
+            elif choice == "6":
                 break
 
     def add_guest(self):
@@ -344,30 +364,33 @@ class BirthdayPlannerApp:
             console.print("\n[bold cyan]购物清单管理[/bold cyan]")
             console.print("1. 添加购物项")
             console.print("2. 查看购物清单")
-            console.print("3. 标记为已购买")
-            console.print("4. 删除购物项")
-            console.print("5. 按类别查看")
-            console.print("6. 按商店查看（采购路线）")
-            console.print("7. 按优先级查看")
-            console.print("8. 返回")
+            console.print("3. 📱 简化版（手机友好）")
+            console.print("4. 标记为已购买")
+            console.print("5. 删除购物项")
+            console.print("6. 按类别查看")
+            console.print("7. 按商店查看（采购路线）")
+            console.print("8. 按优先级查看")
+            console.print("9. 返回")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"])
 
             if choice == "1":
                 self.add_shopping_item()
             elif choice == "2":
                 self.show_shopping_list()
             elif choice == "3":
-                self.mark_as_purchased()
+                self.show_shopping_list_simple()
             elif choice == "4":
-                self.remove_shopping_item()
+                self.mark_as_purchased()
             elif choice == "5":
-                self.show_by_category()
+                self.remove_shopping_item()
             elif choice == "6":
-                self.show_by_store()
+                self.show_by_category()
             elif choice == "7":
-                self.show_by_priority()
+                self.show_by_store()
             elif choice == "8":
+                self.show_by_priority()
+            elif choice == "9":
                 break
 
     def add_shopping_item(self):
@@ -689,6 +712,69 @@ class BirthdayPlannerApp:
                 )
 
             console.print(table)
+
+    def batch_add_guests(self):
+        """批量添加客人"""
+        console.print("\n[bold green]批量添加客人[/bold green]")
+        console.print("[dim]输入格式：姓名,联系方式,备注（备注可选）[/dim]")
+        console.print("[dim]每行一个客人，输入空行结束[/dim]")
+        console.print("[dim]示例：小明,13800138001,幼儿园同学[/dim]\n")
+
+        guests_added = 0
+        while True:
+            line = Prompt.ask(f"客人 {guests_added + 1}（直接回车结束）", default="")
+
+            if not line:
+                break
+
+            try:
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) < 2:
+                    console.print("[red]格式错误！至少需要姓名和联系方式[/red]")
+                    continue
+
+                name = parts[0]
+                contact = parts[1]
+                notes = parts[2] if len(parts) > 2 else ""
+
+                guest = Guest(name=name, contact=contact, notes=notes)
+                self.current_party.add_guest(guest)
+                guests_added += 1
+                console.print(f"[green]✓ 添加：{name}[/green]")
+
+            except Exception as e:
+                console.print(f"[red]添加失败：{e}[/red]")
+
+        if guests_added > 0:
+            console.print(f"\n[green]✓ 成功批量添加 {guests_added} 位客人[/green]")
+        else:
+            console.print("[yellow]未添加任何客人[/yellow]")
+
+    def show_shopping_list_simple(self):
+        """显示简化版购物清单（适合手机查看）"""
+        if not self.current_party.shopping_list:
+            console.print("[yellow]购物清单为空[/yellow]")
+            return
+
+        console.print("\n[bold cyan]📱 简化版购物清单[/bold cyan]\n")
+
+        # 按商店分组
+        stores = {}
+        for item in self.current_party.shopping_list:
+            if not item.purchased:  # 只显示未购买的
+                if item.store not in stores:
+                    stores[item.store] = []
+                stores[item.store].append(item)
+
+        for store, items in sorted(stores.items()):
+            console.print(f"[bold yellow]📍 {store}[/bold yellow]")
+            for item in items:
+                priority_mark = "⭐" if item.priority == "必买" else ""
+                console.print(f"  □ {item.name} x{item.quantity} {priority_mark}")
+            console.print()
+
+        total = sum(i.estimated_price * i.quantity for i in self.current_party.shopping_list if not i.purchased)
+        console.print(f"[cyan]待购总额：约¥{total:.0f}[/cyan]")
 
     def manage_checklist(self):
         """管理派对检查清单"""
