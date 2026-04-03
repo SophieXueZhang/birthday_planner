@@ -20,6 +20,7 @@ from shopping_suggestions import ShoppingSuggestions
 from checklist import PartyChecklist, ChecklistPhase
 from export import PartyExporter
 from validators import DataValidator
+from helpers import UserHelper, MoneySaving
 
 
 console = Console()
@@ -32,6 +33,7 @@ class BirthdayPlannerApp:
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
         os.makedirs(self.data_dir, exist_ok=True)
         self.current_party: Optional[Party] = None
+        self.first_time = True  # 是否首次使用
 
     def show_banner(self):
         """显示欢迎横幅"""
@@ -50,19 +52,30 @@ class BirthdayPlannerApp:
 
     def main_menu(self):
         """主菜单"""
+        # 首次使用显示引导
+        if self.first_time:
+            UserHelper.show_welcome_guide()
+            input()  # 等待用户按回车
+            self.first_time = False
+
         while True:
             console.print("\n[bold cyan]主菜单[/bold cyan]")
             console.print("1. 创建新的派对计划")
             console.print("2. 加载现有派对计划")
-            console.print("3. 退出")
+            console.print("3. 📖 查看帮助")
+            console.print("4. 退出")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3"])
+            choice = Prompt.ask("请选择（输入help查看帮助）", choices=["1", "2", "3", "4", "help", "?"])
 
-            if choice == "1":
+            if choice in ["help", "?"]:
+                UserHelper.show_help()
+            elif choice == "1":
                 self.create_new_party()
             elif choice == "2":
                 self.load_party()
             elif choice == "3":
+                UserHelper.show_help()
+            elif choice == "4":
                 console.print("[yellow]再见！祝派对顺利！[/yellow]")
                 sys.exit(0)
 
@@ -84,11 +97,14 @@ class BirthdayPlannerApp:
                 child_age = 6  # 默认值
                 break
 
-        # 验证日期
+        # 验证日期（支持友好格式）
         while True:
-            party_date = Prompt.ask("派对日期 (YYYY-MM-DD)")
+            party_date_input = Prompt.ask("派对日期 (如: 2026-05-01 或 5月1日)")
+            party_date = UserHelper.parse_friendly_date(party_date_input)
             valid, msg = DataValidator.validate_date(party_date)
             if valid:
+                if party_date != party_date_input:
+                    console.print(f"[dim]已转换为：{party_date}[/dim]")
                 break
             if "警告" in msg:
                 console.print(f"[yellow]{msg}[/yellow]")
@@ -682,6 +698,12 @@ class BirthdayPlannerApp:
         table.add_row("剩余预算", f"¥{party.get_budget_remaining():.2f}")
 
         console.print(table)
+
+        # 显示省钱建议
+        if party.get_total_estimated_cost() > party.budget:
+            console.print("\n[red]⚠️ 预算超支！[/red]")
+            if Confirm.ask("要查看省钱建议吗？", default=True):
+                MoneySaving.show_savings_report(party.shopping_list, party.budget)
 
         # 预算警告
         remaining = party.get_budget_remaining()
