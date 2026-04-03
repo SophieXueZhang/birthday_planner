@@ -35,6 +35,8 @@ class ShoppingItem:
     actual_price: float = 0.0
     purchased: bool = False
     notes: str = ""
+    store: str = "通用"  # 推荐购买的商店
+    priority: str = "必买"  # 必买、推荐、可选
 
     def to_dict(self):
         return asdict(self)
@@ -59,6 +61,7 @@ class Party:
     guest_count_expected: int = 0
     guests: List[Guest] = field(default_factory=list)
     shopping_list: List[ShoppingItem] = field(default_factory=list)
+    checklist_data: dict = field(default_factory=dict)  # 存储检查清单数据
     notes: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 

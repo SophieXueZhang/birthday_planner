@@ -15,46 +15,46 @@ class ShoppingSuggestions:
 
         # 装饰类
         items.extend([
-            ShoppingItem("生日横幅", "装饰", 1, 30.0),
-            ShoppingItem("气球套装", "装饰", 1, 50.0),
-            ShoppingItem("彩带", "装饰", 3, 15.0),
-            ShoppingItem("派对帽", "装饰", guest_count, 3.0),
-            ShoppingItem("桌布", "装饰", 2, 25.0),
+            ShoppingItem("生日横幅", "装饰", 1, 30.0, store="派对用品店", priority="必买"),
+            ShoppingItem("气球套装", "装饰", 1, 50.0, store="派对用品店", priority="必买"),
+            ShoppingItem("彩带", "装饰", 3, 15.0, store="文具店", priority="推荐"),
+            ShoppingItem("派对帽", "装饰", guest_count, 3.0, store="派对用品店", priority="推荐"),
+            ShoppingItem("桌布", "装饰", 2, 25.0, store="超市", priority="必买"),
         ])
 
         # 餐具用品
         items.extend([
-            ShoppingItem("一次性盘子", "用品", guest_count, 2.0),
-            ShoppingItem("一次性杯子", "用品", guest_count, 1.5),
-            ShoppingItem("餐巾纸", "用品", guest_count, 0.5),
-            ShoppingItem("叉子勺子", "用品", guest_count, 1.0),
+            ShoppingItem("一次性盘子", "用品", guest_count, 2.0, store="超市", priority="必买"),
+            ShoppingItem("一次性杯子", "用品", guest_count, 1.5, store="超市", priority="必买"),
+            ShoppingItem("餐巾纸", "用品", guest_count, 0.5, store="超市", priority="必买"),
+            ShoppingItem("叉子勺子", "用品", guest_count, 1.0, store="超市", priority="必买"),
         ])
 
         # 食物和饮料
         items.extend([
-            ShoppingItem("生日蛋糕", "食物", 1, 200.0),
-            ShoppingItem("零食拼盘", "食物", 3, 40.0),
-            ShoppingItem("水果拼盘", "食物", 2, 50.0),
-            ShoppingItem("饮料", "食物", guest_count, 5.0),
-            ShoppingItem("果汁", "食物", guest_count // 2, 8.0),
+            ShoppingItem("生日蛋糕", "食物", 1, 200.0, store="蛋糕店", priority="必买"),
+            ShoppingItem("零食拼盘", "食物", 3, 40.0, store="超市", priority="推荐"),
+            ShoppingItem("水果拼盘", "食物", 2, 50.0, store="水果店", priority="推荐"),
+            ShoppingItem("饮料", "食物", guest_count, 5.0, store="超市", priority="必买"),
+            ShoppingItem("果汁", "食物", guest_count // 2, 8.0, store="超市", priority="推荐"),
         ])
 
         # 娱乐和活动
         items.extend([
-            ShoppingItem("派对游戏道具", "娱乐", 3, 30.0),
-            ShoppingItem("音乐播放列表", "娱乐", 1, 0.0, notes="提前准备"),
+            ShoppingItem("派对游戏道具", "娱乐", 3, 30.0, store="玩具店", priority="推荐"),
+            ShoppingItem("音乐播放列表", "娱乐", 1, 0.0, store="在线准备", priority="必买", notes="提前准备"),
         ])
 
         # 礼品和纪念品
         items.extend([
-            ShoppingItem("小礼品袋", "礼物", guest_count, 15.0, notes="感谢礼物"),
-            ShoppingItem("贴纸", "礼物", guest_count * 2, 2.0),
+            ShoppingItem("小礼品袋", "礼物", guest_count, 15.0, store="礼品店", priority="推荐", notes="感谢礼物"),
+            ShoppingItem("贴纸", "礼物", guest_count * 2, 2.0, store="文具店", priority="可选"),
         ])
 
         # 其他
         items.extend([
-            ShoppingItem("蜡烛", "用品", 1, 10.0),
-            ShoppingItem("打火机/火柴", "用品", 1, 5.0),
+            ShoppingItem("蜡烛", "用品", 1, 10.0, store="超市", priority="必买"),
+            ShoppingItem("打火机/火柴", "用品", 1, 5.0, store="超市", priority="必买"),
         ])
 
         return items
@@ -64,34 +64,34 @@ class ShoppingSuggestions:
         """根据主题生成特定装饰品"""
         theme_items = {
             "超级英雄": [
-                ShoppingItem("超级英雄海报", "装饰", 3, 25.0),
-                ShoppingItem("超级英雄面具", "装饰", 10, 8.0),
-                ShoppingItem("超级英雄主题盘子", "用品", 20, 3.0),
+                ShoppingItem("超级英雄海报", "装饰", 3, 25.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("超级英雄面具", "装饰", 10, 8.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("超级英雄主题盘子", "用品", 20, 3.0, store="派对用品店", priority="可选"),
             ],
             "公主": [
-                ShoppingItem("皇冠", "装饰", 10, 12.0),
-                ShoppingItem("公主主题横幅", "装饰", 1, 35.0),
-                ShoppingItem("粉色气球", "装饰", 50, 1.0),
+                ShoppingItem("皇冠", "装饰", 10, 12.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("公主主题横幅", "装饰", 1, 35.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("粉色气球", "装饰", 50, 1.0, store="派对用品店", priority="推荐"),
             ],
             "恐龙": [
-                ShoppingItem("恐龙玩偶", "装饰", 5, 20.0),
-                ShoppingItem("恐龙主题餐具", "用品", 20, 3.0),
-                ShoppingItem("恐龙脚印贴纸", "装饰", 30, 2.0),
+                ShoppingItem("恐龙玩偶", "装饰", 5, 20.0, store="玩具店", priority="推荐"),
+                ShoppingItem("恐龙主题餐具", "用品", 20, 3.0, store="派对用品店", priority="可选"),
+                ShoppingItem("恐龙脚印贴纸", "装饰", 30, 2.0, store="文具店", priority="可选"),
             ],
             "海洋": [
-                ShoppingItem("海洋生物气球", "装饰", 30, 2.0),
-                ShoppingItem("蓝色桌布", "装饰", 2, 20.0),
-                ShoppingItem("海星装饰", "装饰", 5, 8.0),
+                ShoppingItem("海洋生物气球", "装饰", 30, 2.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("蓝色桌布", "装饰", 2, 20.0, store="超市", priority="推荐"),
+                ShoppingItem("海星装饰", "装饰", 5, 8.0, store="派对用品店", priority="可选"),
             ],
             "太空": [
-                ShoppingItem("星球气球", "装饰", 20, 3.0),
-                ShoppingItem("宇航员立牌", "装饰", 3, 30.0),
-                ShoppingItem("星星灯饰", "装饰", 1, 50.0),
+                ShoppingItem("星球气球", "装饰", 20, 3.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("宇航员立牌", "装饰", 3, 30.0, store="派对用品店", priority="可选"),
+                ShoppingItem("星星灯饰", "装饰", 1, 50.0, store="派对用品店", priority="推荐"),
             ],
             "动物园": [
-                ShoppingItem("动物面具", "装饰", 15, 8.0),
-                ShoppingItem("动物气球", "装饰", 30, 2.0),
-                ShoppingItem("丛林装饰藤蔓", "装饰", 5, 15.0),
+                ShoppingItem("动物面具", "装饰", 15, 8.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("动物气球", "装饰", 30, 2.0, store="派对用品店", priority="推荐"),
+                ShoppingItem("丛林装饰藤蔓", "装饰", 5, 15.0, store="派对用品店", priority="可选"),
             ],
         }
 
@@ -109,27 +109,27 @@ class ShoppingSuggestions:
 
         if age <= 3:
             items.extend([
-                ShoppingItem("软质玩具", "礼物", 5, 25.0),
-                ShoppingItem("彩色积木", "娱乐", 2, 40.0),
-                ShoppingItem("泡泡机", "娱乐", 1, 60.0),
+                ShoppingItem("软质玩具", "礼物", 5, 25.0, store="玩具店", priority="推荐"),
+                ShoppingItem("彩色积木", "娱乐", 2, 40.0, store="玩具店", priority="推荐"),
+                ShoppingItem("泡泡机", "娱乐", 1, 60.0, store="玩具店", priority="推荐"),
             ])
         elif age <= 6:
             items.extend([
-                ShoppingItem("绘画套装", "娱乐", 5, 30.0),
-                ShoppingItem("拼图", "娱乐", 3, 35.0),
-                ShoppingItem("小玩具套装", "礼物", 10, 20.0),
+                ShoppingItem("绘画套装", "娱乐", 5, 30.0, store="文具店", priority="推荐"),
+                ShoppingItem("拼图", "娱乐", 3, 35.0, store="玩具店", priority="推荐"),
+                ShoppingItem("小玩具套装", "礼物", 10, 20.0, store="玩具店", priority="推荐"),
             ])
         elif age <= 10:
             items.extend([
-                ShoppingItem("桌游", "娱乐", 2, 80.0),
-                ShoppingItem("手工DIY套装", "娱乐", 5, 40.0),
-                ShoppingItem("运动器材（足球/飞盘）", "娱乐", 2, 50.0),
+                ShoppingItem("桌游", "娱乐", 2, 80.0, store="玩具店", priority="推荐"),
+                ShoppingItem("手工DIY套装", "娱乐", 5, 40.0, store="文具店", priority="推荐"),
+                ShoppingItem("运动器材（足球/飞盘）", "娱乐", 2, 50.0, store="体育用品店", priority="可选"),
             ])
         else:
             items.extend([
-                ShoppingItem("电子游戏/游戏机租赁", "娱乐", 1, 200.0),
-                ShoppingItem("卡拉OK设备", "娱乐", 1, 150.0),
-                ShoppingItem("照相道具", "娱乐", 10, 15.0),
+                ShoppingItem("电子游戏/游戏机租赁", "娱乐", 1, 200.0, store="租赁服务", priority="可选"),
+                ShoppingItem("卡拉OK设备", "娱乐", 1, 150.0, store="租赁服务", priority="可选"),
+                ShoppingItem("照相道具", "娱乐", 10, 15.0, store="派对用品店", priority="推荐"),
             ])
 
         return items

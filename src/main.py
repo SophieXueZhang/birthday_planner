@@ -17,6 +17,7 @@ from rich.text import Text
 from models import Party, Guest, ShoppingItem
 from invitation import InvitationGenerator
 from shopping_suggestions import ShoppingSuggestions
+from checklist import PartyChecklist, ChecklistPhase
 
 
 console = Console()
@@ -169,21 +170,24 @@ class BirthdayPlannerApp:
             console.print("\n[bold cyan]派对管理[/bold cyan]")
             console.print("1. 管理客人名单")
             console.print("2. 管理购物清单")
-            console.print("3. 生成邀请函")
-            console.print("4. 查看预算状态")
-            console.print("5. 保存并返回主菜单")
+            console.print("3. 派对检查清单")
+            console.print("4. 生成邀请函")
+            console.print("5. 查看预算状态")
+            console.print("6. 保存并返回主菜单")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6"])
 
             if choice == "1":
                 self.manage_guests()
             elif choice == "2":
                 self.manage_shopping_list()
             elif choice == "3":
-                self.generate_invitations()
+                self.manage_checklist()
             elif choice == "4":
-                self.show_budget_status()
+                self.generate_invitations()
             elif choice == "5":
+                self.show_budget_status()
+            elif choice == "6":
                 self.save_party()
                 console.print("[green]✓ 已保存[/green]")
                 break
@@ -195,6 +199,12 @@ class BirthdayPlannerApp:
 
         party = self.current_party
 
+        # RSVP统计
+        pending_count = sum(1 for g in party.guests if g.rsvp_status == "pending")
+        confirmed_count = sum(1 for g in party.guests if g.rsvp_status == "confirmed")
+        declined_count = sum(1 for g in party.guests if g.rsvp_status == "declined")
+        total_attendees = party.get_confirmed_guests_count()
+
         overview = f"""
 [bold cyan]派对概览[/bold cyan]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -204,7 +214,12 @@ class BirthdayPlannerApp:
 主题：{party.theme if party.theme else '无'}
 预算：¥{party.budget:.2f}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-客人：{len(party.guests)} 人（确认：{party.get_confirmed_guests_count()}）
+[bold yellow]客人统计：[/bold yellow]
+  总邀请：{len(party.guests)} 人
+  [green]✓ 已确认：{confirmed_count} 人（含+1共 {total_attendees} 人）[/green]
+  [yellow]⏳ 待确认：{pending_count} 人[/yellow]
+  [red]✗ 已拒绝：{declined_count} 人[/red]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 购物项：{len(party.shopping_list)} 项
 预估花费：¥{party.get_total_estimated_cost():.2f}
 实际花费：¥{party.get_total_actual_cost():.2f}
@@ -332,9 +347,11 @@ class BirthdayPlannerApp:
             console.print("3. 标记为已购买")
             console.print("4. 删除购物项")
             console.print("5. 按类别查看")
-            console.print("6. 返回")
+            console.print("6. 按商店查看（采购路线）")
+            console.print("7. 按优先级查看")
+            console.print("8. 返回")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
 
             if choice == "1":
                 self.add_shopping_item()
@@ -347,6 +364,10 @@ class BirthdayPlannerApp:
             elif choice == "5":
                 self.show_by_category()
             elif choice == "6":
+                self.show_by_store()
+            elif choice == "7":
+                self.show_by_priority()
+            elif choice == "8":
                 break
 
     def add_shopping_item(self):
@@ -583,6 +604,235 @@ class BirthdayPlannerApp:
                 )
 
             console.print(cat_table)
+
+    def show_by_store(self):
+        """按商店分组显示购物清单"""
+        if not self.current_party.shopping_list:
+            console.print("[yellow]购物清单为空[/yellow]")
+            return
+
+        stores = {}
+        for item in self.current_party.shopping_list:
+            if item.store not in stores:
+                stores[item.store] = []
+            stores[item.store].append(item)
+
+        # 按商店显示
+        for store, items in sorted(stores.items()):
+            console.print(f"\n[bold magenta]━━━ 📍 {store} ━━━[/bold magenta]")
+
+            table = Table(box=box.SIMPLE)
+            table.add_column("物品", style="cyan")
+            table.add_column("数量", style="yellow")
+            table.add_column("优先级", style="white")
+            table.add_column("预估", style="green", justify="right")
+            table.add_column("状态", style="white")
+
+            store_total = 0
+            for item in items:
+                status = "✓" if item.purchased else "□"
+                priority_color = {
+                    "必买": "[bold red]必买[/bold red]",
+                    "推荐": "[yellow]推荐[/yellow]",
+                    "可选": "[dim]可选[/dim]"
+                }
+                table.add_row(
+                    item.name,
+                    str(item.quantity),
+                    priority_color.get(item.priority, item.priority),
+                    f"¥{item.estimated_price * item.quantity:.2f}",
+                    status
+                )
+                if not item.purchased:
+                    store_total += item.estimated_price * item.quantity
+
+            console.print(table)
+            console.print(f"[cyan]该店预估花费：¥{store_total:.2f}[/cyan]")
+
+    def show_by_priority(self):
+        """按优先级显示购物清单"""
+        if not self.current_party.shopping_list:
+            console.print("[yellow]购物清单为空[/yellow]")
+            return
+
+        priorities = {"必买": [], "推荐": [], "可选": []}
+        for item in self.current_party.shopping_list:
+            if item.priority in priorities:
+                priorities[item.priority].append(item)
+            else:
+                priorities.setdefault("其他", []).append(item)
+
+        # 按优先级显示
+        priority_order = ["必买", "推荐", "可选", "其他"]
+        for priority in priority_order:
+            if priority not in priorities or not priorities[priority]:
+                continue
+
+            items = priorities[priority]
+            console.print(f"\n[bold magenta]━━━ {priority} ━━━[/bold magenta]")
+
+            table = Table(box=box.SIMPLE)
+            table.add_column("物品", style="cyan")
+            table.add_column("商店", style="yellow")
+            table.add_column("数量", style="white")
+            table.add_column("预估", style="green", justify="right")
+            table.add_column("状态", style="white")
+
+            for item in items:
+                status = "[green]✓ 已购买[/green]" if item.purchased else "[yellow]待购买[/yellow]"
+                table.add_row(
+                    item.name,
+                    item.store,
+                    str(item.quantity),
+                    f"¥{item.estimated_price * item.quantity:.2f}",
+                    status
+                )
+
+            console.print(table)
+
+    def manage_checklist(self):
+        """管理派对检查清单"""
+        # 如果没有检查清单数据，生成标准清单
+        if not self.current_party.checklist_data:
+            phases = PartyChecklist.generate_standard_checklist(
+                self.current_party.child_age,
+                self.current_party.guest_count_expected
+            )
+            self.current_party.checklist_data = {
+                "phases": [phase.to_dict() for phase in phases]
+            }
+
+        while True:
+            console.print("\n[bold cyan]派对检查清单[/bold cyan]")
+            console.print("1. 查看完整清单")
+            console.print("2. 查看当前阶段任务")
+            console.print("3. 标记任务完成")
+            console.print("4. 查看紧急待办")
+            console.print("5. 返回")
+
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5"])
+
+            if choice == "1":
+                self.show_full_checklist()
+            elif choice == "2":
+                self.show_current_phase()
+            elif choice == "3":
+                self.mark_checklist_item()
+            elif choice == "4":
+                self.show_urgent_items()
+            elif choice == "5":
+                break
+
+    def show_full_checklist(self):
+        """显示完整检查清单"""
+        phases = [ChecklistPhase.from_dict(p) for p in self.current_party.checklist_data.get("phases", [])]
+
+        if not phases:
+            console.print("[yellow]没有检查清单[/yellow]")
+            return
+
+        total_progress = PartyChecklist.overall_progress(phases)
+        console.print(f"\n[bold cyan]整体进度：{total_progress:.1f}%[/bold cyan]\n")
+
+        for phase in phases:
+            deadline = phase.get_deadline(self.current_party.party_date)
+            is_overdue = phase.is_overdue(self.current_party.party_date)
+            progress = phase.completion_rate()
+
+            # 标题
+            title = f"{phase.name} (截止：{deadline})"
+            if is_overdue:
+                title += " ⚠️ 已过期"
+
+            console.print(f"\n[bold yellow]{title}[/bold yellow]")
+            console.print(f"完成度：{progress:.0f}%")
+
+            # 任务列表
+            for item in phase.items:
+                status = "[green]✓[/green]" if item.completed else "[dim]□[/dim]"
+                console.print(f"  {status} {item.title}")
+                if item.notes:
+                    console.print(f"     [dim]{item.notes}[/dim]")
+
+    def show_current_phase(self):
+        """显示当前阶段任务"""
+        phases = [ChecklistPhase.from_dict(p) for p in self.current_party.checklist_data.get("phases", [])]
+
+        if not phases:
+            console.print("[yellow]没有检查清单[/yellow]")
+            return
+
+        current = PartyChecklist.get_current_phase(phases, self.current_party.party_date)
+
+        if not current:
+            console.print("[yellow]无当前阶段[/yellow]")
+            return
+
+        console.print(f"\n[bold cyan]当前阶段：{current.name}[/bold cyan]")
+        console.print(f"完成度：{current.completion_rate():.0f}%\n")
+
+        for item in current.items:
+            status = "[green]✓[/green]" if item.completed else "[yellow]□[/yellow]"
+            console.print(f"  {status} {item.title}")
+            if item.notes:
+                console.print(f"     [dim]{item.notes}[/dim]")
+
+    def mark_checklist_item(self):
+        """标记检查清单项为完成"""
+        phases = [ChecklistPhase.from_dict(p) for p in self.current_party.checklist_data.get("phases", [])]
+
+        if not phases:
+            console.print("[yellow]没有检查清单[/yellow]")
+            return
+
+        # 显示所有未完成的任务
+        console.print("\n[bold cyan]未完成的任务：[/bold cyan]\n")
+        uncompleted = []
+        index = 1
+        for phase in phases:
+            for item in phase.items:
+                if not item.completed:
+                    console.print(f"{index}. [{phase.name}] {item.title}")
+                    uncompleted.append((phase, item))
+                    index += 1
+
+        if not uncompleted:
+            console.print("[green]所有任务已完成！[/green]")
+            return
+
+        choice = IntPrompt.ask("\n选择要标记完成的任务（输入序号）", default=1)
+
+        if 1 <= choice <= len(uncompleted):
+            phase, item = uncompleted[choice - 1]
+            item.completed = True
+
+            # 保存更新
+            self.current_party.checklist_data["phases"] = [p.to_dict() for p in phases]
+
+            console.print(f"[green]✓ 已完成：{item.title}[/green]")
+        else:
+            console.print("[red]无效的选择[/red]")
+
+    def show_urgent_items(self):
+        """显示紧急待办事项"""
+        phases = [ChecklistPhase.from_dict(p) for p in self.current_party.checklist_data.get("phases", [])]
+
+        if not phases:
+            console.print("[yellow]没有检查清单[/yellow]")
+            return
+
+        urgent = PartyChecklist.get_urgent_items(phases, self.current_party.party_date)
+
+        if not urgent:
+            console.print("[green]没有紧急待办事项！[/green]")
+            return
+
+        console.print(f"\n[bold red]⚠️  紧急待办事项（{len(urgent)}项）[/bold red]\n")
+
+        for phase, item in urgent:
+            console.print(f"[yellow]• [{phase.name}] {item.title}[/yellow]")
+            if item.notes:
+                console.print(f"  [dim]{item.notes}[/dim]")
 
     def run(self):
         """运行应用"""
