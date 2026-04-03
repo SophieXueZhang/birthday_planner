@@ -22,6 +22,10 @@ from export import PartyExporter
 from validators import DataValidator
 from helpers import UserHelper, MoneySaving
 from dashboard import PartyDashboard, QuickActions
+from monetization import (
+    MonetizationManager, SubscriptionTier, ShoppingAffiliate,
+    VenueMarketplace, ValueAddedServices
+)
 
 
 console = Console()
@@ -35,6 +39,7 @@ class BirthdayPlannerApp:
         os.makedirs(self.data_dir, exist_ok=True)
         self.current_party: Optional[Party] = None
         self.first_time = True  # 是否首次使用
+        self.monetization_manager = MonetizationManager(SubscriptionTier.FREE)  # 默认免费版
 
     def show_banner(self):
         """显示欢迎横幅"""
@@ -64,10 +69,12 @@ class BirthdayPlannerApp:
             console.print("1. 创建新的派对计划")
             console.print("2. 📋 参考上次派对快速创建")
             console.print("3. 加载现有派对计划")
-            console.print("4. 📖 查看帮助")
-            console.print("5. 退出")
+            console.print("4. 💎 增值服务市场")
+            console.print("5. 💰 升级到专业版")
+            console.print("6. 📖 查看帮助")
+            console.print("7. 退出")
 
-            choice = Prompt.ask("请选择（输入help查看帮助）", choices=["1", "2", "3", "4", "5", "help", "?"])
+            choice = Prompt.ask("请选择（输入help查看帮助）", choices=["1", "2", "3", "4", "5", "6", "7", "help", "?", "upgrade"])
 
             if choice in ["help", "?"]:
                 UserHelper.show_help()
@@ -78,8 +85,12 @@ class BirthdayPlannerApp:
             elif choice == "3":
                 self.load_party()
             elif choice == "4":
+                self.show_value_added_services()
+            elif choice in ["5", "upgrade"]:
+                self.show_upgrade_info()
+            elif choice == "6":
                 UserHelper.show_help()
-            elif choice == "5":
+            elif choice == "7":
                 console.print("[yellow]再见！祝派对顺利！[/yellow]")
                 sys.exit(0)
 
@@ -347,12 +358,13 @@ class BirthdayPlannerApp:
             console.print("2. 管理购物清单")
             console.print("3. 派对检查清单")
             console.print("4. 生成邀请函")
-            console.print("5. 📄 导出/打印")
-            console.print("6. 查看预算状态")
-            console.print("7. ⚡ 快捷操作")
-            console.print("8. 保存并返回主菜单")
+            console.print("5. 🏠 场地推荐")
+            console.print("6. 📄 导出/打印")
+            console.print("7. 查看预算状态")
+            console.print("8. ⚡ 快捷操作")
+            console.print("9. 保存并返回主菜单")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"])
 
             if choice == "1":
                 self.manage_guests()
@@ -363,12 +375,14 @@ class BirthdayPlannerApp:
             elif choice == "4":
                 self.generate_invitations()
             elif choice == "5":
-                self.export_documents()
+                self.show_venue_recommendations()
             elif choice == "6":
-                self.show_budget_status()
+                self.export_documents()
             elif choice == "7":
-                self.quick_actions_mode()
+                self.show_budget_status()
             elif choice == "8":
+                self.quick_actions_mode()
+            elif choice == "9":
                 self.save_party()
                 console.print("[green]✓ 已保存[/green]")
                 break
@@ -585,15 +599,16 @@ class BirthdayPlannerApp:
             console.print("1. 添加购物项")
             console.print("2. 查看购物清单")
             console.print("3. 📱 简化版（手机友好）")
-            console.print("4. 标记为已购买")
-            console.print("5. ✏️ 快速调整价格/数量")
-            console.print("6. 删除购物项")
-            console.print("7. 按类别查看")
-            console.print("8. 按商店查看（采购路线）")
-            console.print("9. 按优先级查看")
-            console.print("10. 返回")
+            console.print("4. 💡 智能购物推荐（优惠+省钱）")
+            console.print("5. 标记为已购买")
+            console.print("6. ✏️ 快速调整价格/数量")
+            console.print("7. 删除购物项")
+            console.print("8. 按类别查看")
+            console.print("9. 按商店查看（采购路线）")
+            console.print("10. 按优先级查看")
+            console.print("11. 返回")
 
-            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
+            choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"])
 
             if choice == "1":
                 self.add_shopping_item()
@@ -602,18 +617,20 @@ class BirthdayPlannerApp:
             elif choice == "3":
                 self.show_shopping_list_simple()
             elif choice == "4":
-                self.mark_as_purchased()
+                self.show_smart_shopping_recommendations()
             elif choice == "5":
-                self.quick_edit_item()
+                self.mark_as_purchased()
             elif choice == "6":
-                self.remove_shopping_item()
+                self.quick_edit_item()
             elif choice == "7":
-                self.show_by_category()
+                self.remove_shopping_item()
             elif choice == "8":
-                self.show_by_store()
+                self.show_by_category()
             elif choice == "9":
-                self.show_by_priority()
+                self.show_by_store()
             elif choice == "10":
+                self.show_by_priority()
+            elif choice == "11":
                 break
 
     def add_shopping_item(self):
@@ -1262,6 +1279,93 @@ class BirthdayPlannerApp:
             console.print(content)
             console.print("=" * 60)
             console.print("\n[dim]💡 提示：复制上面的内容发送到微信群即可[/dim]")
+
+    def show_smart_shopping_recommendations(self):
+        """显示智能购物推荐"""
+        if not self.current_party or not self.current_party.shopping_list:
+            console.print("[yellow]购物清单为空，请先添加物品[/yellow]")
+            return
+
+        console.print("\n[bold cyan]═══ 智能购物推荐 ═══[/bold cyan]\n")
+
+        total_commission = 0  # 内部追踪佣金
+
+        for item in self.current_party.shopping_list:
+            if item.purchased:
+                continue  # 已购买的跳过
+
+            # 获取推荐
+            recommendations = ShoppingAffiliate.get_recommendations(
+                item.name,
+                item.estimated_price
+            )
+
+            if recommendations:
+                console.print(f"\n[bold yellow]📦 {item.name}[/bold yellow]")
+                console.print(f"[dim]预算：¥{item.estimated_price:.0f} × {item.quantity}[/dim]")
+
+                ShoppingAffiliate.show_product_comparison(recommendations)
+
+                # 询问是否要查看购买链接
+                if Confirm.ask("要查看购买链接吗？", default=False):
+                    for i, rec in enumerate(recommendations[:3], 1):
+                        console.print(f"\n{i}. {rec.name}")
+                        console.print(f"   [cyan]购买链接：{rec.affiliate_link}[/cyan]")
+                        console.print(f"   [dim]（通过此链接购买支持我们持续改进）[/dim]")
+
+                        # 内部追踪佣金
+                        total_commission += rec.get_commission()
+
+        if total_commission > 0:
+            # 内部记录（实际不显示给用户）
+            pass  # self.monetization_manager.revenue_tracker可以记录
+
+        console.print("\n[green]💡 提示：通过推荐链接购买通常有优惠，还能支持我们免费提供服务！[/green]")
+
+    def show_venue_recommendations(self):
+        """显示场地推荐"""
+        if not self.current_party:
+            console.print("[yellow]请先创建派对计划[/yellow]")
+            return
+
+        console.print("\n[bold cyan]═══ 场地推荐 ═══[/bold cyan]\n")
+
+        # 获取推荐
+        venues = VenueMarketplace.get_venue_recommendations(
+            self.current_party.guest_count_expected,
+            self.current_party.budget * 0.3  # 假设场地占预算30%
+        )
+
+        VenueMarketplace.show_venue_recommendations(venues)
+
+        if venues and Confirm.ask("\n要查看预订联系方式吗？", default=False):
+            console.print("\n[bold cyan]联系方式：[/bold cyan]")
+            for venue in venues:
+                console.print(f"\n{venue.name}：{venue.contact}")
+                console.print(f"预订链接：{venue.booking_link}")
+
+    def show_value_added_services(self):
+        """显示增值服务市场"""
+        ValueAddedServices.show_services_marketplace()
+
+        if Confirm.ask("\n要了解服务详情吗？", default=False):
+            console.print("\n[cyan]请联系客服微信：partyplanner-service[/cyan]")
+            console.print("[cyan]或拨打：400-888-6666[/cyan]")
+
+    def show_upgrade_info(self):
+        """显示升级信息"""
+        MonetizationManager.show_pricing_comparison()
+
+        console.print("\n[bold yellow]如何升级？[/bold yellow]")
+        console.print("  1. 微信扫码支付")
+        console.print("  2. 支付宝转账")
+        console.print("  3. 联系客服：400-888-6666")
+        console.print("\n[dim]升级后立即生效，支持7天无理由退款[/dim]")
+
+        if Confirm.ask("\n要升级到专业版吗？", default=False):
+            console.print("\n[green]感谢您的支持！[/green]")
+            console.print("[cyan]请添加客服微信完成升级：partyplanner-service[/cyan]")
+            # 实际应该跳转到支付页面
 
     def run(self):
         """运行应用"""
