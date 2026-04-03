@@ -9,7 +9,8 @@ import json
 from datetime import datetime, timedelta
 from flask import Flask, render_template_string, request, redirect, url_for, jsonify
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_base_dir, 'src'))
 from us_config import *
 from us_monetization import SubscriptionTier
 
